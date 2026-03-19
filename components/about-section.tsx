@@ -6,7 +6,7 @@ const stats = [
   { value: "5+", label: "Years Experience" },
   { value: "10+", label: "Awards Won" },
 ]
-const SUPABASE_URL = "https://lodtmdpsufwnkmcpdrwm.supabase.co/storage/v1/object/public/images";
+//const SUPABASE_URL = "https://lodtmdpsufwnkmcpdrwm.supabase.co/storage/v1/object/public/images";
 
 export function AboutSection() {
   return (
@@ -19,7 +19,7 @@ export function AboutSection() {
               <div className="space-y-4">
                 <div className="aspect-[3/4] relative overflow-hidden">
                   <Image
-                    src="`${SUPABASE_URL}/portfolio-1.jpg"
+                    src="/images/portfolio-1.jpg"
                     alt="Studio work"
                     fill
                     className="object-cover"
@@ -27,7 +27,7 @@ export function AboutSection() {
                 </div>
                 <div className="aspect-square relative overflow-hidden">
                   <Image
-                    src="`${SUPABASE_URL}/portfolio-4.jpg"
+                    src="/images/portfolio-4.jpg"
                     alt="Event photography"
                     fill
                     className="object-cover"
@@ -37,7 +37,7 @@ export function AboutSection() {
               <div className="space-y-4 pt-8">
                 <div className="aspect-square relative overflow-hidden">
                   <Image
-                    src="`${SUPABASE_URL}/portfolio-3.jpg"
+                    src="/images/portfolio-3.jpg"
                     alt="Studio shoot"
                     fill
                     className="object-cover"
@@ -45,7 +45,7 @@ export function AboutSection() {
                 </div>
                 <div className="aspect-[3/4] relative overflow-hidden">
                   <Image
-                    src="`${SUPABASE_URL}/portfolio-5.jpg"
+                    src="/images/portfolio-5.jpg"
                     alt="Natural photography"
                     fill
                     className="object-cover"
