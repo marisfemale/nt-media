@@ -5,6 +5,15 @@ const nextConfig = {
   },
   images: {
     unoptimized: true,
+
+    remotePatterns: [
+      {
+        protocol: 'https',
+        hostname: 'lodtmdpsufwnkmcpdrwm.supabase.co',
+        port: '',
+        pathname: '/storage/v1/object/public/**',
+      },
+    ]
   },
 }
 
