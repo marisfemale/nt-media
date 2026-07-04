@@ -6,12 +6,11 @@ import { useEffect, useState, useCallback } from "react"
 import { useParams, useSearchParams } from "next/navigation"
 import Link from "next/link"
 import Image from "next/image"
-import { createClient } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
+import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import {
   Dialog,
@@ -76,60 +75,27 @@ export default function GalleryViewPage() {
     reason: "",
   })
 
-  const supabase = createClient()
-
   const fetchGallery = useCallback(async () => {
-    // Try to find gallery by access code
-    const { data: galleryData, error } = await supabase
-      .from("galleries")
-      .select("*")
-      .eq("access_code", code.toUpperCase())
-      .single()
+    const query = accessToken ? `?token=${encodeURIComponent(accessToken)}` : ""
+    const response = await fetch(`/api/gallery/${code}${query}`)
 
-    if (error || !galleryData) {
+    if (!response.ok) {
       setNotFound(true)
       setIsLoading(false)
       return
     }
 
+    const {
+      gallery: galleryData,
+      photos: photosData,
+      hasFullAccess: fullAccess,
+    } = await response.json()
+
     setGallery(galleryData)
-
-    // Check if user has full access (via access code or valid token)
-    let fullAccess = true // Access code in URL means full access
-
-    // If there's a token, verify it
-    if (accessToken) {
-      const { data: tokenData } = await supabase
-        .from("gallery_access_requests")
-        .select("*")
-        .eq("access_token", accessToken)
-        .eq("gallery_id", galleryData.id)
-        .eq("is_approved", true)
-        .gt("token_expires_at", new Date().toISOString())
-        .single()
-
-      fullAccess = !!tokenData
-    }
-
     setHasFullAccess(fullAccess)
-
-    // Fetch photos based on access level
-    const photosQuery = supabase
-      .from("gallery_photos")
-      .select("id, image_url, title, is_public")
-      .eq("gallery_id", galleryData.id)
-      .order("sort_order", { ascending: true })
-
-    // If no full access, only show public photos
-    if (!fullAccess) {
-      photosQuery.eq("is_public", true)
-    }
-
-    const { data: photosData } = await photosQuery
-
     setPhotos(photosData || [])
     setIsLoading(false)
-  }, [code, accessToken, supabase])
+  }, [code, accessToken])
 
   useEffect(() => {
     fetchGallery()
@@ -145,19 +111,23 @@ export default function GalleryViewPage() {
     const expiresAt = new Date()
     expiresAt.setDate(expiresAt.getDate() + 7) // Token valid for 7 days
 
-    const { error } = await supabase.from("gallery_access_requests").insert({
-      gallery_id: gallery.id,
-      requester_name: requestForm.name,
-      requester_email: requestForm.email,
-      reason: requestForm.reason || null,
-      access_token: token,
-      token_expires_at: expiresAt.toISOString(),
-      is_approved: true, // Auto-approve for demo purposes
+    const response = await fetch(`/api/gallery/${code}/access-requests`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        gallery_id: gallery.id,
+        requester_name: requestForm.name,
+        requester_email: requestForm.email,
+        reason: requestForm.reason || null,
+        access_token: token,
+        token_expires_at: expiresAt.toISOString(),
+        is_approved: true, // Auto-approve for demo purposes
+      }),
     })
 
     setIsSubmitting(false)
 
-    if (error) {
+    if (!response.ok) {
       alert("Error submitting request. Please try again.")
       return
     }
@@ -218,6 +188,9 @@ export default function GalleryViewPage() {
 
   const visiblePhotos = photos
   const privatePhotosCount = hasFullAccess ? 0 : photos.filter(p => !p.is_public).length
+  const downloadAllHref = `/api/gallery/${encodeURIComponent(code)}/download${
+    accessToken ? `?token=${encodeURIComponent(accessToken)}` : ""
+  }`
 
   return (
     <div className="min-h-screen bg-background">
@@ -250,33 +223,46 @@ export default function GalleryViewPage() {
       {/* Gallery Info */}
       <div className="border-b border-border">
         <div className="container mx-auto px-6 py-12">
-          <h1 className="text-3xl md:text-4xl font-serif font-bold text-foreground mb-4">
-            {gallery.title}
-          </h1>
-          {gallery.description && (
-            <p className="text-muted-foreground text-lg mb-6 max-w-2xl">
-              {gallery.description}
-            </p>
-          )}
-          <div className="flex flex-wrap gap-4 text-sm text-muted-foreground">
-            <div className="flex items-center gap-2">
-              <User className="w-4 h-4" />
-              {gallery.client_name}
-            </div>
-            {gallery.shoot_date && (
-              <div className="flex items-center gap-2">
-                <Calendar className="w-4 h-4" />
-                {new Date(gallery.shoot_date).toLocaleDateString("en-US", {
-                  year: "numeric",
-                  month: "long",
-                  day: "numeric",
-                })}
+          <div className="flex flex-col gap-6 md:flex-row md:items-start md:justify-between">
+            <div>
+              <h1 className="text-3xl md:text-4xl font-serif font-bold text-foreground mb-4">
+                {gallery.title}
+              </h1>
+              {gallery.description && (
+                <p className="text-muted-foreground text-lg mb-6 max-w-2xl">
+                  {gallery.description}
+                </p>
+              )}
+              <div className="flex flex-wrap gap-4 text-sm text-muted-foreground">
+                <div className="flex items-center gap-2">
+                  <User className="w-4 h-4" />
+                  {gallery.client_name}
+                </div>
+                {gallery.shoot_date && (
+                  <div className="flex items-center gap-2">
+                    <Calendar className="w-4 h-4" />
+                    {new Date(gallery.shoot_date).toLocaleDateString("en-US", {
+                      year: "numeric",
+                      month: "long",
+                      day: "numeric",
+                    })}
+                  </div>
+                )}
+                <div className="flex items-center gap-2">
+                  <Eye className="w-4 h-4" />
+                  {visiblePhotos.length} photos
+                </div>
               </div>
-            )}
-            <div className="flex items-center gap-2">
-              <Eye className="w-4 h-4" />
-              {visiblePhotos.length} photos
             </div>
+
+            {visiblePhotos.length > 0 && (
+              <Button asChild className="w-full bg-accent text-accent-foreground hover:bg-accent/90 sm:w-auto">
+                <a href={downloadAllHref}>
+                  <Download className="w-4 h-4" />
+                  Download All
+                </a>
+              </Button>
+            )}
           </div>
         </div>
       </div>

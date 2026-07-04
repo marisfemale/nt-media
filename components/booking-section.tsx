@@ -1,12 +1,13 @@
 "use client"
 
-import React from "react"
+import React, { useEffect, useState } from "react"
 
-import { useState, useEffect } from "react"
-import { Calendar } from "@/components/ui/calendar"
+import { AlertCircle, CalendarDays, CheckCircle2, Clock, CreditCard, Timer } from "lucide-react"
+
+import { DepositPayment } from "@/components/deposit-payment"
 import { Button } from "@/components/ui/button"
+import { Calendar } from "@/components/ui/calendar"
 import { Input } from "@/components/ui/input"
-import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import {
   Select,
@@ -15,21 +16,21 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { Textarea } from "@/components/ui/textarea"
 import {
-  CalendarDays,
-  Clock,
-  CheckCircle2,
-  Loader2,
-  Sunrise,
-  Sun,
-  Sunset,
-  Moon,
-  Timer,
-  CreditCard,
-} from "lucide-react"
-import { createClient } from "@/lib/supabase/client"
-import { DepositPayment } from "@/components/deposit-payment"
-import { getSessionProduct, formatPrice } from "@/lib/products"
+  formatDayHeading,
+  formatFullDate,
+  formatTimeLabel,
+  getAppointmentDescription,
+  getDateKey,
+  getInitialAppointmentDate,
+  getStartTimesForDay,
+  isBookableDate,
+  isStartTimeAvailable,
+  parseDurationMinutes,
+  toDateInputValue,
+} from "@/lib/booking-appointments"
+import { formatPrice, type SessionProduct } from "@/lib/products"
 
 const services = [
   { value: "photography", label: "Photography Session" },
@@ -39,87 +40,6 @@ const services = [
   { value: "consultation", label: "Free Consultation" },
 ]
 
-const sessionDurations = [
-  {
-    value: "30min",
-    label: "Quick Session",
-    duration: "30 minutes",
-    price: "$150",
-    description: "Perfect for headshots or single product shots",
-  },
-  {
-    value: "1hr",
-    label: "Standard Session",
-    duration: "1 hour",
-    price: "$275",
-    description: "Ideal for portraits, small events, or mini projects",
-  },
-  {
-    value: "2hr",
-    label: "Extended Session",
-    duration: "2 hours",
-    price: "$500",
-    description: "Great for lifestyle shoots or multiple setups",
-  },
-  {
-    value: "4hr",
-    label: "Half Day",
-    duration: "4 hours",
-    price: "$950",
-    description: "Comprehensive coverage for events or commercial work",
-  },
-  {
-    value: "8hr",
-    label: "Full Day",
-    duration: "8 hours",
-    price: "$1,800",
-    description: "Complete production for large projects or full events",
-  },
-]
-
-const timeOfDayOptions = [
-  {
-    value: "early-morning",
-    label: "Early Morning / Sunrise",
-    time: "5:30 AM - 8:00 AM",
-    icon: Sunrise,
-    vibe: "Soft, ethereal, and pristine",
-    bestFor: "Outdoor portraits, peaceful landscapes, and capturing the 'beginning' of a story",
-    lighting: "Diffused natural light with cool, crisp tones",
-  },
-  {
-    value: "mid-day",
-    label: "Mid-day / High Noon",
-    time: "11:00 AM - 2:00 PM",
-    icon: Sun,
-    vibe: "Bold, vibrant, and energetic",
-    bestFor: "Indoor studio sessions, architectural photography, or high-contrast editorial looks",
-    lighting: "Direct, powerful sunlight (Outdoor) or controlled, consistent lighting (Indoor)",
-  },
-  {
-    value: "golden-hour",
-    label: "Late Afternoon / Sunset",
-    time: "4:00 PM - 7:00 PM",
-    icon: Sunset,
-    vibe: "Warm, romantic, and breathtaking",
-    bestFor: "Cinematic portraits, lifestyle sessions, and 'The NT Signature' glow",
-    lighting: "Warm, honey-colored rays that flatter skin tones and create natural lens flares",
-    recommended: true,
-  },
-  {
-    value: "night",
-    label: "Night / Low Light",
-    time: "8:00 PM - 11:00 PM",
-    icon: Moon,
-    vibe: "Mysterious, moody, and urban-cinematic",
-    bestFor: "Late-night events, street-style shoots, and neon-lit narratives",
-    lighting: "Ambient city lights, artificial flashes, and deep shadows for a high-drama feel",
-  },
-]
-
-
-
-// Generate a unique booking reference
 function generateBookingReference(): string {
   const prefix = "NT"
   const timestamp = Date.now().toString(36).toUpperCase()
@@ -127,196 +47,252 @@ function generateBookingReference(): string {
   return `${prefix}-${timestamp}-${random}`
 }
 
-export function BookingSection() {
+export function BookingSection({
+  sessionPackages,
+}: {
+  sessionPackages: SessionProduct[]
+}) {
+  const [appointmentStartDate, setAppointmentStartDate] = useState(() =>
+    getInitialAppointmentDate()
+  )
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(undefined)
-  const [selectedDuration, setSelectedDuration] = useState<string>("")
-  const [selectedTimeOfDay, setSelectedTimeOfDay] = useState<string>("")
+  const [selectedDuration, setSelectedDuration] = useState("")
+  const [selectedStartTime, setSelectedStartTime] = useState("")
   const [blockedDates, setBlockedDates] = useState<Date[]>([])
   const [step, setStep] = useState(1)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isSuccess, setIsSuccess] = useState(false)
-  const [bookingReference, setBookingReference] = useState<string>("")
+  const [bookingError, setBookingError] = useState("")
+  const [bookingReference, setBookingReference] = useState("")
   const [paymentMethod, setPaymentMethod] = useState<"card" | "bank" | null>(null)
-const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState({
     name: "",
     email: "",
     phone: "",
-serviceType: "",
+    serviceType: "",
     projectDescription: "",
   })
 
-  const supabase = createClient()
+  const selectedSession = sessionPackages.find((session) => session.id === selectedDuration)
+  const selectedDurationMinutes = selectedSession
+    ? parseDurationMinutes(selectedSession.duration)
+    : 30
+  const selectedDayStartTimes = isBookableDate(appointmentStartDate, blockedDates)
+    ? getStartTimesForDay(appointmentStartDate, selectedDurationMinutes)
+    : []
+  const selectedAppointmentDescription =
+    selectedStartTime && selectedSession
+      ? getAppointmentDescription(selectedStartTime, selectedDurationMinutes)
+      : undefined
+  const selectedDateIsUnavailable = !isBookableDate(appointmentStartDate, blockedDates)
 
-  // Fetch blocked dates
   useEffect(() => {
     async function fetchAvailability() {
-      const { data: blocked } = await supabase
-        .from("blocked_dates")
-        .select("blocked_date")
+      const response = await fetch("/api/blocked-dates")
+      if (!response.ok) return
+
+      const blocked: { blocked_date: string }[] = await response.json()
 
       if (blocked) {
-        setBlockedDates(blocked.map((b) => new Date(b.blocked_date)))
+        setBlockedDates(blocked.map((blockedDate) => new Date(blockedDate.blocked_date)))
       }
     }
 
     fetchAvailability()
-  }, [supabase])
+  }, [])
 
-  // Check if a date is disabled
-  const isDateDisabled = (date: Date) => {
-    const today = new Date()
-    today.setHours(0, 0, 0, 0)
+  const handleAppointmentDateSelect = (date?: Date) => {
+    if (!date) return
 
-    // Disable past dates
-    if (date < today) return true
+    setAppointmentStartDate(date)
+    setSelectedDate(undefined)
+    setSelectedStartTime("")
+    setBookingError("")
+  }
 
-    // Disable Sundays
-    if (date.getDay() === 0) return true
+  const handleDurationSelect = (session: SessionProduct) => {
+    const durationMinutes = parseDurationMinutes(session.duration)
 
-    // Disable blocked dates
-    const dateStr = date.toISOString().split("T")[0]
-    if (blockedDates.some((d) => d.toISOString().split("T")[0] === dateStr)) {
-      return true
+    setSelectedDuration(session.id)
+    setBookingError("")
+
+    if (
+      selectedStartTime &&
+      !isStartTimeAvailable(appointmentStartDate, selectedStartTime, durationMinutes)
+    ) {
+      setSelectedStartTime("")
+      setSelectedDate(undefined)
     }
-
-    return false
   }
 
-// Generate reference and move to payment step
-  const handleProceedToPayment = (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!selectedDate || !selectedDuration || !selectedTimeOfDay) return
+  const handleStartTimeSelect = (startTime: string) => {
+    setSelectedDate(appointmentStartDate)
+    setSelectedStartTime(startTime)
+    setBookingError("")
+  }
+
+  const handleProceedToPayment = (event: React.FormEvent) => {
+    event.preventDefault()
+    if (!selectedDate || !selectedStartTime || !selectedDuration) return
     if (!formData.name || !formData.email || !formData.serviceType) return
-    
-    // Generate booking reference
-    const reference = generateBookingReference()
-    setBookingReference(reference)
-    setStep(4)
+
+    setBookingReference(generateBookingReference())
+    setBookingError("")
+    setStep(3)
   }
 
-  // Save booking after payment is complete
-  const handlePaymentComplete = async () => {
-    if (!selectedDate || !selectedDuration || !selectedTimeOfDay) return
-    
+  const handlePaymentComplete = async (method: "card" | "bank") => {
+    if (!selectedDate || !selectedStartTime || !selectedSession) return
+
+    setPaymentMethod(method)
+    setBookingError("")
     setIsSubmitting(true)
-    
-    const selectedDurationData = sessionDurations.find(s => s.value === selectedDuration)
-    const selectedTimeData = timeOfDayOptions.find(t => t.value === selectedTimeOfDay)
-    const product = getSessionProduct(selectedDuration)
-    
-    const { error } = await supabase.from("bookings").insert({
-      name: formData.name,
-      email: formData.email,
-      phone: formData.phone || null,
-      service_type: formData.serviceType,
-      booking_date: selectedDate.toISOString().split("T")[0],
-      booking_time: `${selectedTimeData?.label} (${selectedTimeData?.time}) - ${selectedDurationData?.label} (${selectedDurationData?.duration})`,
-      project_description: formData.projectDescription || null,
-      budget_range: product ? formatPrice(product.fullPriceInCents) : null,
-      status: paymentMethod === "card" ? "confirmed" : "pending_payment",
-    })
-    
-    setIsSubmitting(false)
-    
-    if (error) {
-      console.error("Booking error:", error)
-      alert("There was an error submitting your booking. Please try again.")
+
+    let response: Response
+
+    try {
+      response = await fetch("/api/bookings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          booking_reference: bookingReference,
+          name: formData.name,
+          email: formData.email,
+          phone: formData.phone || null,
+          service_type: formData.serviceType,
+          booking_date: toDateInputValue(selectedDate),
+          booking_start_time: selectedStartTime,
+          duration_minutes: selectedDurationMinutes,
+          booking_time: `Start ${formatTimeLabel(selectedStartTime)} - ${selectedSession.label} (${selectedSession.duration})`,
+          project_description: formData.projectDescription || null,
+          budget_range: formatPrice(selectedSession.fullPriceInCents),
+          payment_method: method,
+          status: method === "card" ? "confirmed" : "pending_payment",
+        }),
+      })
+    } catch {
+      setIsSubmitting(false)
+      setBookingError("We could not save your booking request. Please try again.")
       return
     }
-    
+
+    setIsSubmitting(false)
+
+    if (!response.ok) {
+      setBookingError("We could not save your booking request. Please try again.")
+      return
+    }
+
     setIsSuccess(true)
   }
 
-if (isSuccess) {
-    const selectedDurationData = sessionDurations.find(s => s.value === selectedDuration)
-    const selectedTimeData = timeOfDayOptions.find(t => t.value === selectedTimeOfDay)
-    const product = getSessionProduct(selectedDuration)
-    
+  const resetBookingForm = () => {
+    setIsSuccess(false)
+    setStep(1)
+    setAppointmentStartDate(getInitialAppointmentDate())
+    setSelectedDate(undefined)
+    setSelectedDuration("")
+    setSelectedStartTime("")
+    setBookingReference("")
+    setPaymentMethod(null)
+    setBookingError("")
+    setFormData({
+      name: "",
+      email: "",
+      phone: "",
+      serviceType: "",
+      projectDescription: "",
+    })
+  }
+
+  if (isSuccess) {
     return (
-      <section id="booking" className="py-24 md:py-32 bg-background">
+      <section id="booking" className="bg-background py-24 md:py-32">
         <div className="container mx-auto px-6">
-          <div className="max-w-2xl mx-auto text-center">
-            <div className="w-20 h-20 rounded-full bg-accent/20 flex items-center justify-center mx-auto mb-6">
-              <CheckCircle2 className="w-10 h-10 text-accent" />
+          <div className="mx-auto max-w-2xl text-center">
+            <div className="mx-auto mb-6 flex h-20 w-20 items-center justify-center rounded-full bg-accent/20">
+              <CheckCircle2 className="h-10 w-10 text-accent" />
             </div>
-            <h2 className="text-3xl md:text-4xl font-serif font-bold text-foreground mb-4">
+            <h2 className="mb-4 font-serif text-3xl font-bold text-foreground md:text-4xl">
               {paymentMethod === "card" ? "Booking Confirmed!" : "Booking Request Received!"}
             </h2>
-            <p className="text-lg text-muted-foreground mb-4">
-              Thank you, {formData.name}! {paymentMethod === "card" 
-                ? "Your booking has been confirmed." 
+            <p className="mb-4 text-lg text-muted-foreground">
+              Thank you, {formData.name}!{" "}
+              {paymentMethod === "card"
+                ? "Your booking has been confirmed."
                 : "Your booking will be confirmed once we receive your payment."}
             </p>
-            
-            {/* Booking Reference */}
-            <div className="bg-accent/10 border border-accent/30 rounded-xl p-4 mb-6">
-              <p className="text-sm text-muted-foreground mb-1">Your Booking Reference</p>
-              <p className="text-2xl font-mono font-bold text-accent">{bookingReference}</p>
-              <p className="text-xs text-muted-foreground mt-2">
+
+            <div className="mb-6 rounded-xl border border-accent/30 bg-accent/10 p-4">
+              <p className="mb-1 text-sm text-muted-foreground">Your Booking Reference</p>
+              <p className="font-mono text-2xl font-bold text-accent">{bookingReference}</p>
+              <p className="mt-2 text-xs text-muted-foreground">
                 Please save this reference for your records
               </p>
             </div>
-            
-            <div className="bg-card border border-border rounded-xl p-6 mb-6 text-left">
+
+            <div className="mb-6 rounded-xl border border-border bg-card p-6 text-left">
               <div className="space-y-3">
                 <p className="text-foreground">
-                  <span className="font-medium">Date:</span>{" "}
-                  {selectedDate?.toLocaleDateString("en-US", {
-                    weekday: "long",
-                    year: "numeric",
-                    month: "long",
-                    day: "numeric",
-                  })}
+                  <span className="font-medium">Date:</span> {formatFullDate(selectedDate)}
                 </p>
                 <p className="text-foreground">
-                  <span className="font-medium">Time:</span>{" "}
-                  {selectedTimeData?.label} ({selectedTimeData?.time})
+                  <span className="font-medium">Start time:</span>{" "}
+                  {selectedStartTime ? formatTimeLabel(selectedStartTime) : ""}
                 </p>
                 <p className="text-foreground">
-                  <span className="font-medium">Duration:</span>{" "}
-                  {selectedDurationData?.label} ({selectedDurationData?.duration})
+                  <span className="font-medium">Duration:</span> {selectedSession?.label}{" "}
+                  ({selectedSession?.duration})
                 </p>
-                <div className="pt-3 border-t border-border mt-3">
+                {selectedAppointmentDescription && (
+                  <p className="text-sm leading-6 text-muted-foreground">
+                    {selectedAppointmentDescription.title}. Estimated finish{" "}
+                    {formatTimeLabel(selectedAppointmentDescription.finishTime)}.
+                  </p>
+                )}
+                <div className="mt-3 border-t border-border pt-3">
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Total Price</span>
-                    <span className="text-foreground">{product ? formatPrice(product.fullPriceInCents) : selectedDurationData?.price}</span>
+                    <span className="text-foreground">
+                      {selectedSession ? formatPrice(selectedSession.fullPriceInCents) : ""}
+                    </span>
                   </div>
-                  <div className="flex justify-between text-accent font-semibold">
-                    <span>Deposit Paid (50%)</span>
-                    <span>{product ? formatPrice(product.depositPriceInCents) : ""}</span>
+                  <div className="flex justify-between font-semibold text-accent">
+                    <span>
+                      {paymentMethod === "card" ? "Deposit Paid (50%)" : "Deposit Due (50%)"}
+                    </span>
+                    <span>
+                      {selectedSession ? formatPrice(selectedSession.depositPriceInCents) : ""}
+                    </span>
                   </div>
                   <div className="flex justify-between text-muted-foreground">
                     <span>Remaining Balance</span>
-                    <span>{product ? formatPrice(product.fullPriceInCents - product.depositPriceInCents) : ""}</span>
+                    <span>
+                      {selectedSession
+                        ? formatPrice(
+                            selectedSession.fullPriceInCents -
+                              selectedSession.depositPriceInCents
+                          )
+                        : ""}
+                    </span>
+                  </div>
+                  <div className="flex justify-between text-muted-foreground">
+                    <span>Payment Method</span>
+                    <span>{paymentMethod === "card" ? "Card" : "Bank transfer / PayID"}</span>
                   </div>
                 </div>
               </div>
             </div>
-            
-            <p className="text-muted-foreground mb-8">
-              {paymentMethod === "card" 
-                ? "A confirmation email has been sent to " 
-                : "Once your payment is received, we'll send a confirmation email to "}
+
+            <p className="mb-8 text-muted-foreground">
+              {paymentMethod === "card"
+                ? "A confirmation email has been sent to "
+                : "Your booking request has been saved. Once your payment is received, we will send a confirmation email to "}
               <span className="text-accent">{formData.email}</span>
               {paymentMethod === "bank" && " within 1-2 business days."}
             </p>
             <Button
-              onClick={() => {
-                setIsSuccess(false)
-                setStep(1)
-                setSelectedDate(undefined)
-                setSelectedDuration("")
-                setSelectedTimeOfDay("")
-                setBookingReference("")
-                setPaymentMethod(null)
-                setFormData({
-                  name: "",
-                  email: "",
-                  phone: "",
-serviceType: "",
-                  projectDescription: "",
-                })
-              }}
+              onClick={resetBookingForm}
               variant="outline"
               className="border-accent text-accent hover:bg-accent hover:text-accent-foreground"
             >
@@ -329,232 +305,225 @@ serviceType: "",
   }
 
   return (
-    <section id="booking" className="py-24 md:py-32 bg-background">
+    <section id="booking" className="bg-background py-24 md:py-32">
       <div className="container mx-auto px-6">
-        {/* Section Header */}
-        <div className="max-w-3xl mb-16">
-          <p className="text-sm uppercase tracking-[0.3em] text-accent mb-4">
+        <div className="mb-16 max-w-3xl">
+          <p className="mb-4 text-sm uppercase tracking-[0.3em] text-accent">
             Book a Session
           </p>
-          <h2 className="text-3xl md:text-5xl font-serif font-bold text-foreground mb-6 text-balance">
+          <h2 className="mb-6 text-balance font-serif text-3xl font-bold text-foreground md:text-5xl">
             Schedule Your Visual Story
           </h2>
-          <p className="text-lg text-muted-foreground leading-relaxed">
-            Select a date and time that works for you. We&apos;ll confirm your booking
-            within 24 hours.
+          <p className="text-lg leading-relaxed text-muted-foreground">
+            Choose a start date, pick an available start time, then select the
+            session duration that fits your shoot.
           </p>
         </div>
 
-{/* Booking Steps Indicator */}
-          <div className="flex items-center justify-center gap-2 md:gap-4 mb-12">
-            {[1, 2, 3, 4].map((s) => (
-              <div key={s} className="flex items-center">
-                <div
-                  className={`w-8 h-8 md:w-10 md:h-10 rounded-full flex items-center justify-center font-medium text-sm transition-colors ${
-                    step >= s
-                      ? "bg-accent text-accent-foreground"
-                      : "bg-secondary text-muted-foreground"
-                  }`}
-                >
-                  {s}
-                </div>
-                {s < 4 && (
-                  <div
-                    className={`w-8 md:w-16 lg:w-24 h-0.5 mx-1 md:mx-2 transition-colors ${
-                      step > s ? "bg-accent" : "bg-border"
-                    }`}
-                  />
-                )}
-              </div>
-            ))}
-          </div>
-          <div className="flex justify-center gap-4 md:gap-12 lg:gap-16 mb-12 text-xs md:text-sm">
-            <span className={step >= 1 ? "text-foreground" : "text-muted-foreground"}>
-              Select Date
-            </span>
-            <span className={step >= 2 ? "text-foreground" : "text-muted-foreground"}>
-              Choose Time
-            </span>
-            <span className={step >= 3 ? "text-foreground" : "text-muted-foreground"}>
-              Your Details
-            </span>
-            <span className={step >= 4 ? "text-foreground" : "text-muted-foreground"}>
-              Payment
-            </span>
-          </div>
-
-        <div className="max-w-4xl mx-auto">
-          {/* Step 1: Date Selection */}
-          {step === 1 && (
-            <div className="flex flex-col items-center">
-              <div className="bg-card border border-border rounded-xl p-6 md:p-8">
-                <div className="flex items-center gap-3 mb-6">
-                  <CalendarDays className="w-5 h-5 text-accent" />
-                  <h3 className="text-lg font-semibold text-foreground">
-                    Select a Date
-                  </h3>
-                </div>
-                <Calendar
-                  mode="single"
-                  selected={selectedDate}
-                  onSelect={setSelectedDate}
-                  disabled={isDateDisabled}
-                  className="rounded-md"
-                />
-              </div>
-              <Button
-                onClick={() => setStep(2)}
-                disabled={!selectedDate}
-                className="mt-8 bg-accent text-accent-foreground hover:bg-accent/90 px-8 py-6 text-lg"
+        <div className="mb-12 flex items-center justify-center gap-2 md:gap-4">
+          {[1, 2, 3].map((stepNumber) => (
+            <div key={stepNumber} className="flex items-center">
+              <div
+                className={`flex h-8 w-8 items-center justify-center rounded-full text-sm font-medium transition-colors md:h-10 md:w-10 ${
+                  step >= stepNumber
+                    ? "bg-accent text-accent-foreground"
+                    : "bg-secondary text-muted-foreground"
+                }`}
               >
-                Continue to Time Selection
-              </Button>
+                {stepNumber}
+              </div>
+              {stepNumber < 3 && (
+                <div
+                  className={`mx-1 h-0.5 w-12 transition-colors md:mx-2 md:w-24 ${
+                    step > stepNumber ? "bg-accent" : "bg-border"
+                  }`}
+                />
+              )}
             </div>
-          )}
+          ))}
+        </div>
+        <div className="mb-12 grid grid-cols-3 gap-2 text-center text-[11px] sm:text-xs md:flex md:justify-center md:gap-16 md:text-sm">
+          <span className={step >= 1 ? "text-foreground" : "text-muted-foreground"}>
+            Appointment
+          </span>
+          <span className={step >= 2 ? "text-foreground" : "text-muted-foreground"}>
+            Details
+          </span>
+          <span className={step >= 3 ? "text-foreground" : "text-muted-foreground"}>
+            Deposit
+          </span>
+        </div>
 
-          {/* Step 2: Duration & Time of Day Selection */}
-          {step === 2 && (
-            <div className="flex flex-col items-center w-full">
-              <p className="text-sm text-muted-foreground mb-8">
-                Booking for{" "}
-                <span className="text-foreground font-medium">
-                  {selectedDate?.toLocaleDateString("en-US", {
-                    weekday: "long",
-                    month: "long",
-                    day: "numeric",
-                  })}
-                </span>
-              </p>
-
-              {/* Session Duration Selection */}
-              <div className="bg-card border border-border rounded-xl p-6 md:p-8 w-full max-w-4xl mb-8">
-                <div className="flex items-center gap-3 mb-2">
-                  <Timer className="w-5 h-5 text-accent" />
+        <div className="mx-auto max-w-5xl">
+          {step === 1 && (
+            <div className="space-y-6">
+              <div className="rounded-xl border border-border bg-card p-6 md:p-8">
+                <div className="mb-6 flex items-center gap-3">
+                  <CalendarDays className="h-5 w-5 text-accent" />
                   <h3 className="text-lg font-semibold text-foreground">
-                    Choose Session Duration
+                    Choose an appointment start date
                   </h3>
                 </div>
-                <p className="text-sm text-muted-foreground mb-6">
-                  Select how long you need us for your project
+                <div className="grid gap-6 lg:grid-cols-[340px_1fr] lg:items-start">
+                  <div className="rounded-lg border border-border bg-background p-3">
+                    <Calendar
+                      mode="single"
+                      selected={appointmentStartDate}
+                      onSelect={handleAppointmentDateSelect}
+                      disabled={(date) => !isBookableDate(date, blockedDates)}
+                      defaultMonth={appointmentStartDate}
+                      showOutsideDays={false}
+                      className="mx-auto"
+                    />
+                  </div>
+                  <div className="space-y-4">
+                    <h4
+                      id={`day-${getDateKey(appointmentStartDate)}`}
+                      className="font-semibold text-foreground"
+                    >
+                      {formatDayHeading(appointmentStartDate)}
+                    </h4>
+                    <p className="text-sm leading-6 text-muted-foreground">
+                      Choose a start time for {formatFullDate(appointmentStartDate)}.
+                    </p>
+                  </div>
+                </div>
+                {selectedDateIsUnavailable && (
+                  <p className="mt-3 text-sm text-muted-foreground">
+                    That date is not available. Please choose another date.
+                  </p>
+                )}
+
+                <div className="mt-8">
+                  {selectedDayStartTimes.length > 0 ? (
+                    <div
+                      className="flex flex-wrap gap-3"
+                      aria-labelledby={`day-${getDateKey(appointmentStartDate)}`}
+                    >
+                      {selectedDayStartTimes.map((startTime) => {
+                        const isSelected = selectedStartTime === startTime
+
+                        return (
+                          <button
+                            key={startTime}
+                            type="button"
+                            onClick={() => handleStartTimeSelect(startTime)}
+                            aria-pressed={Boolean(isSelected)}
+                            className={`min-h-10 rounded-full px-5 py-2 text-sm font-medium transition-colors ${
+                              isSelected
+                                ? "bg-accent text-accent-foreground"
+                                : "bg-secondary text-accent hover:bg-accent/10"
+                            }`}
+                          >
+                            {formatTimeLabel(startTime)}
+                          </button>
+                        )
+                      })}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">
+                      No start times fit the selected duration on this day.
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-border bg-card p-6 md:p-8">
+                <div className="mb-2 flex items-center gap-3">
+                  <Timer className="h-5 w-5 text-accent" />
+                  <h3 className="text-lg font-semibold text-foreground">
+                    Choose duration
+                  </h3>
+                </div>
+                <p className="mb-6 text-sm leading-6 text-muted-foreground">
+                  Pick the closest package. The start-time list will only show slots
+                  that fit before the end of the booking day.
                 </p>
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
-                  {sessionDurations.map((session) => (
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
+                  {sessionPackages.map((session) => (
                     <button
-                      key={session.value}
+                      key={session.id}
                       type="button"
-                      onClick={() => setSelectedDuration(session.value)}
-                      className={`relative p-4 rounded-xl border text-left transition-all ${
-                        selectedDuration === session.value
+                      onClick={() => handleDurationSelect(session)}
+                      className={`relative rounded-xl border p-4 text-left transition-all ${
+                        selectedDuration === session.id
                           ? "border-accent bg-accent/10 ring-1 ring-accent"
                           : "border-border bg-secondary hover:border-accent/50"
                       }`}
                     >
-                      <div className="text-2xl font-bold text-accent mb-1">
-                        {session.price}
+                      <div className="mb-1 text-2xl font-bold text-accent">
+                        {formatPrice(session.fullPriceInCents)}
                       </div>
-                      <div className="font-semibold text-foreground text-sm mb-1">
+                      <div className="mb-1 text-sm font-semibold text-foreground">
                         {session.label}
                       </div>
-                      <div className="text-xs text-muted-foreground mb-2">
+                      <div className="mb-2 text-xs text-muted-foreground">
                         {session.duration}
                       </div>
-                      <p className="text-xs text-muted-foreground leading-relaxed">
+                      <p className="text-xs leading-5 text-muted-foreground">
                         {session.description}
                       </p>
-                      {selectedDuration === session.value && (
-                        <div className="absolute top-2 right-2">
-                          <CheckCircle2 className="w-5 h-5 text-accent" />
+                      {selectedDuration === session.id && (
+                        <div className="absolute right-2 top-2">
+                          <CheckCircle2 className="h-5 w-5 text-accent" />
                         </div>
                       )}
                     </button>
                   ))}
                 </div>
-                <p className="text-xs text-muted-foreground mt-4 italic">
-                  * Prices are estimates. Final quote provided after consultation based on specific requirements.
+                <p className="mt-4 text-xs italic text-muted-foreground">
+                  * Prices are estimates. Final quote provided after consultation
+                  based on specific requirements.
                 </p>
               </div>
 
-              {/* Time of Day Selection */}
-              <div className="bg-card border border-border rounded-xl p-6 md:p-8 w-full max-w-4xl">
-                <div className="flex items-center gap-3 mb-2">
-                  <Clock className="w-5 h-5 text-accent" />
-                  <h3 className="text-lg font-semibold text-foreground">
-                    Choose Time of Day
-                  </h3>
-                </div>
-                <p className="text-sm text-muted-foreground mb-6">
-                  Each time of day creates a unique visual atmosphere
-                </p>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {timeOfDayOptions.map((option) => (
-                    <button
-                      key={option.value}
-                      type="button"
-                      onClick={() => setSelectedTimeOfDay(option.value)}
-                      className={`relative p-5 rounded-xl border text-left transition-all ${
-                        selectedTimeOfDay === option.value
-                          ? "border-accent bg-accent/10 ring-1 ring-accent"
-                          : "border-border bg-secondary hover:border-accent/50"
-                      }`}
-                    >
-                      {"recommended" in option && option.recommended && (
-                        <span className="absolute top-3 right-3 text-xs uppercase tracking-wider bg-accent text-accent-foreground px-2 py-1 rounded">
-                          Recommended
-                        </span>
-                      )}
-                      <div className="flex items-start gap-4">
-                        <div className={`p-3 rounded-lg ${
-                          selectedTimeOfDay === option.value 
-                            ? "bg-accent/20" 
-                            : "bg-background"
-                        }`}>
-                          <option.icon className="w-6 h-6 text-accent" />
+              {(selectedStartTime || selectedSession) && (
+                <div
+                  role="status"
+                  className="rounded-xl border border-accent/30 bg-accent/10 p-5"
+                >
+                  {selectedStartTime && selectedSession && selectedAppointmentDescription ? (
+                    <div className="flex items-start gap-4">
+                      <div className="rounded-lg bg-background p-3">
+                        <Clock className="h-5 w-5 text-accent" />
+                      </div>
+                      <div className="space-y-3">
+                        <div>
+                          <h4 className="font-semibold text-foreground">
+                            {selectedAppointmentDescription.title}
+                          </h4>
+                          <p className="mt-1 text-sm leading-6 text-muted-foreground">
+                            {selectedAppointmentDescription.body}
+                          </p>
                         </div>
-                        <div className="flex-1">
-                          <div className="font-semibold text-foreground mb-1">
-                            {option.label}
-                          </div>
-                          <div className="text-sm text-accent font-medium mb-2">
-                            {option.time}
-                          </div>
-                          <div className="space-y-2 text-sm">
-                            <p className="text-muted-foreground">
-                              <span className="text-foreground font-medium">The Vibe:</span>{" "}
-                              {option.vibe}
-                            </p>
-                            <p className="text-muted-foreground">
-                              <span className="text-foreground font-medium">Best for:</span>{" "}
-                              {option.bestFor}
-                            </p>
-                            <p className="text-muted-foreground">
-                              <span className="text-foreground font-medium">Lighting:</span>{" "}
-                              {option.lighting}
-                            </p>
-                          </div>
+                        <div className="flex flex-wrap gap-2 text-sm">
+                          <span className="rounded-md bg-background px-3 py-1.5 text-foreground">
+                            Starts {formatTimeLabel(selectedStartTime)}
+                          </span>
+                          <span className="rounded-md bg-background px-3 py-1.5 text-foreground">
+                            Estimated finish{" "}
+                            {formatTimeLabel(selectedAppointmentDescription.finishTime)}
+                          </span>
+                          <span className="rounded-md bg-background px-3 py-1.5 text-foreground">
+                            {selectedSession.label}
+                          </span>
                         </div>
                       </div>
-                      {selectedTimeOfDay === option.value && (
-                        <div className="absolute bottom-3 right-3">
-                          <CheckCircle2 className="w-5 h-5 text-accent" />
-                        </div>
-                      )}
-                    </button>
-                  ))}
+                    </div>
+                  ) : (
+                    <p className="text-sm leading-6 text-muted-foreground">
+                      Choose both a start time and duration to see what that booking
+                      window is best suited for.
+                    </p>
+                  )}
                 </div>
-              </div>
+              )}
 
-              <div className="flex gap-4 mt-8">
+              <div className="flex justify-center">
                 <Button
-                  onClick={() => setStep(1)}
-                  variant="outline"
-                  className="border-border text-foreground hover:bg-secondary px-6 py-6"
-                >
-                  Back
-                </Button>
-                <Button
-                  onClick={() => setStep(3)}
-                  disabled={!selectedDuration || !selectedTimeOfDay}
-                  className="bg-accent text-accent-foreground hover:bg-accent/90 px-8 py-6 text-lg"
+                  onClick={() => setStep(2)}
+                  disabled={!selectedDate || !selectedStartTime || !selectedDuration}
+                  className="w-full max-w-sm bg-accent px-8 py-6 text-base text-accent-foreground hover:bg-accent/90 sm:text-lg"
                 >
                   Continue to Details
                 </Button>
@@ -562,185 +531,191 @@ serviceType: "",
             </div>
           )}
 
-{/* Step 3: Contact Details Form */}
-          {step === 3 && (
-            <form onSubmit={handleProceedToPayment} className="max-w-2xl mx-auto">
-              <div className="bg-card border border-border rounded-xl p-6 md:p-8">
-                {/* Booking Summary */}
-                <div className="bg-secondary rounded-lg p-5 mb-8">
-                  <p className="text-sm text-muted-foreground mb-3">
+          {step === 2 && (
+            <form onSubmit={handleProceedToPayment} className="mx-auto max-w-2xl">
+              <div className="rounded-xl border border-border bg-card p-6 md:p-8">
+                <div className="mb-8 rounded-lg bg-secondary p-5">
+                  <p className="mb-3 text-sm text-muted-foreground">
                     Your Booking Summary
                   </p>
-                  <div className="space-y-2">
-                    <p className="text-foreground font-medium">
-                      {selectedDate?.toLocaleDateString("en-US", {
-                        weekday: "long",
-                        month: "long",
-                        day: "numeric",
-                        year: "numeric",
-                      })}
+                  <div className="space-y-3">
+                    <p className="font-medium text-foreground">
+                      {formatFullDate(selectedDate)}
                     </p>
                     <div className="flex flex-wrap gap-3 text-sm">
-                      <span className="inline-flex items-center gap-1.5 bg-background px-3 py-1.5 rounded-md">
-                        <Timer className="w-4 h-4 text-accent" />
+                      <span className="inline-flex items-center gap-1.5 rounded-md bg-background px-3 py-1.5">
+                        <Clock className="h-4 w-4 text-accent" />
                         <span className="text-foreground">
-                          {sessionDurations.find(s => s.value === selectedDuration)?.label}{" "}
-                          ({sessionDurations.find(s => s.value === selectedDuration)?.duration})
+                          {selectedStartTime ? formatTimeLabel(selectedStartTime) : ""}
                         </span>
                       </span>
-                      <span className="inline-flex items-center gap-1.5 bg-background px-3 py-1.5 rounded-md">
-                        <Clock className="w-4 h-4 text-accent" />
+                      <span className="inline-flex items-center gap-1.5 rounded-md bg-background px-3 py-1.5">
+                        <Timer className="h-4 w-4 text-accent" />
                         <span className="text-foreground">
-                          {timeOfDayOptions.find(t => t.value === selectedTimeOfDay)?.label}
+                          {selectedSession?.label} ({selectedSession?.duration})
                         </span>
                       </span>
                     </div>
-                    <p className="text-accent font-semibold text-lg mt-3">
-                      Estimated: {sessionDurations.find(s => s.value === selectedDuration)?.price}
+                    {selectedAppointmentDescription && (
+                      <p className="text-sm leading-6 text-muted-foreground">
+                        {selectedAppointmentDescription.title}:{" "}
+                        {selectedAppointmentDescription.body}
+                      </p>
+                    )}
+                    <p className="mt-3 text-lg font-semibold text-accent">
+                      Estimated:{" "}
+                      {selectedSession ? formatPrice(selectedSession.fullPriceInCents) : ""}
                     </p>
                   </div>
+                </div>
 
-                  <div className="space-y-6">
-                    {/* Service Type */}
+                <div className="space-y-6">
+                  <div>
+                    <Label htmlFor="service" className="text-foreground">
+                      Service Type <span className="text-accent">*</span>
+                    </Label>
+                    <Select
+                      value={formData.serviceType}
+                      onValueChange={(value) =>
+                        setFormData({ ...formData, serviceType: value })
+                      }
+                      required
+                    >
+                      <SelectTrigger className="mt-2 border-border bg-input text-foreground">
+                        <SelectValue placeholder="Select a service" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {services.map((service) => (
+                          <SelectItem key={service.value} value={service.value}>
+                            {service.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                     <div>
-                      <Label htmlFor="service" className="text-foreground">
-                        Service Type <span className="text-accent">*</span>
+                      <Label htmlFor="name" className="text-foreground">
+                        Full Name <span className="text-accent">*</span>
                       </Label>
-                      <Select
-                        value={formData.serviceType}
-                        onValueChange={(value) =>
-                          setFormData({ ...formData, serviceType: value })
+                      <Input
+                        id="name"
+                        type="text"
+                        value={formData.name}
+                        onChange={(event) =>
+                          setFormData({ ...formData, name: event.target.value })
                         }
                         required
-                      >
-                        <SelectTrigger className="mt-2 bg-input border-border text-foreground">
-                          <SelectValue placeholder="Select a service" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {services.map((service) => (
-                            <SelectItem key={service.value} value={service.value}>
-                              {service.label}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                        className="mt-2 border-border bg-input text-foreground"
+                        placeholder="John Doe"
+                      />
                     </div>
-
-                    {/* Name & Email Row */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div>
-                        <Label htmlFor="name" className="text-foreground">
-                          Full Name <span className="text-accent">*</span>
-                        </Label>
-                        <Input
-                          id="name"
-                          type="text"
-                          value={formData.name}
-                          onChange={(e) =>
-                            setFormData({ ...formData, name: e.target.value })
-                          }
-                          required
-                          className="mt-2 bg-input border-border text-foreground"
-                          placeholder="John Doe"
-                        />
-                      </div>
-                      <div>
-                        <Label htmlFor="email" className="text-foreground">
-                          Email Address <span className="text-accent">*</span>
-                        </Label>
-                        <Input
-                          id="email"
-                          type="email"
-                          value={formData.email}
-                          onChange={(e) =>
-                            setFormData({ ...formData, email: e.target.value })
-                          }
-                          required
-                          className="mt-2 bg-input border-border text-foreground"
-                          placeholder="john@example.com"
-                        />
-                      </div>
-                    </div>
-
-                    {/* Phone & Budget Row */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div>
-                        <Label htmlFor="phone" className="text-foreground">
-                          Phone Number
-                        </Label>
-                        <Input
-                          id="phone"
-                          type="tel"
-                          value={formData.phone}
-                          onChange={(e) =>
-                            setFormData({ ...formData, phone: e.target.value })
-                          }
-                          className="mt-2 bg-input border-border text-foreground"
-                          placeholder="+1 (555) 000-0000"
-                        />
-                      </div>
-
-                    </div>
-
-                    {/* Project Description */}
                     <div>
-                      <Label htmlFor="description" className="text-foreground">
-                        Tell Us About Your Project
+                      <Label htmlFor="email" className="text-foreground">
+                        Email Address <span className="text-accent">*</span>
                       </Label>
-                      <Textarea
-                        id="description"
-                        value={formData.projectDescription}
-                        onChange={(e) =>
-                          setFormData({
-                            ...formData,
-                            projectDescription: e.target.value,
-                          })
+                      <Input
+                        id="email"
+                        type="email"
+                        value={formData.email}
+                        onChange={(event) =>
+                          setFormData({ ...formData, email: event.target.value })
                         }
-                        className="mt-2 bg-input border-border text-foreground min-h-[120px]"
-                        placeholder="Describe your vision, goals, and any specific requirements..."
+                        required
+                        className="mt-2 border-border bg-input text-foreground"
+                        placeholder="john@example.com"
                       />
                     </div>
                   </div>
+
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                    <div>
+                      <Label htmlFor="phone" className="text-foreground">
+                        Phone Number
+                      </Label>
+                      <Input
+                        id="phone"
+                        type="tel"
+                        value={formData.phone}
+                        onChange={(event) =>
+                          setFormData({ ...formData, phone: event.target.value })
+                        }
+                        className="mt-2 border-border bg-input text-foreground"
+                        placeholder="+61 493 316 602"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <Label htmlFor="description" className="text-foreground">
+                      Tell Us About Your Project
+                    </Label>
+                    <Textarea
+                      id="description"
+                      value={formData.projectDescription}
+                      onChange={(event) =>
+                        setFormData({
+                          ...formData,
+                          projectDescription: event.target.value,
+                        })
+                      }
+                      className="mt-2 min-h-[120px] border-border bg-input text-foreground"
+                      placeholder="Describe your vision, goals, and any specific requirements..."
+                    />
+                  </div>
                 </div>
 
-                <div className="flex gap-4 mt-8 justify-center">
+                <div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row sm:gap-4">
                   <Button
                     type="button"
-                    onClick={() => setStep(2)}
+                    onClick={() => setStep(1)}
                     variant="outline"
-                    className="border-border text-foreground hover:bg-secondary px-6 py-6"
+                    className="border-border text-foreground hover:bg-secondary"
                   >
                     Back
                   </Button>
-<Button
-                      type="submit"
-                      disabled={
-                        !formData.name ||
-                        !formData.email ||
-                        !formData.serviceType
-                      }
-                      className="bg-accent text-accent-foreground hover:bg-accent/90 px-8 py-6 text-lg"
-                    >
-                      <CreditCard className="w-5 h-5 mr-2" />
-                      Proceed to Payment
-                    </Button>
+                  <Button
+                    type="submit"
+                    disabled={!formData.name || !formData.email || !formData.serviceType}
+                    className="bg-accent px-8 py-6 text-base text-accent-foreground hover:bg-accent/90 sm:text-lg"
+                  >
+                    <CreditCard className="mr-2 h-5 w-5" />
+                    Continue to Deposit Options
+                  </Button>
                 </div>
               </div>
-</form>
+            </form>
           )}
 
-          {/* Step 4: Payment */}
-          {step === 4 && (
+          {step === 3 && (
             <div className="w-full">
+              {bookingError && (
+                <div
+                  role="alert"
+                  className="mx-auto mb-6 flex max-w-4xl items-start gap-3 rounded-xl border border-destructive/40 bg-destructive/10 p-4 text-sm text-foreground"
+                >
+                  <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-destructive" />
+                  <p>{bookingError}</p>
+                </div>
+              )}
+              {isSubmitting && (
+                <div
+                  role="status"
+                  className="mx-auto mb-6 max-w-4xl rounded-xl border border-accent/30 bg-accent/10 p-4 text-sm text-foreground"
+                >
+                  Saving your booking request...
+                </div>
+              )}
               <DepositPayment
                 sessionId={selectedDuration}
                 bookingReference={bookingReference}
                 customerEmail={formData.email}
                 customerName={formData.name}
-                depositAmount={getSessionProduct(selectedDuration)?.depositPriceInCents || 0}
-                fullAmount={getSessionProduct(selectedDuration)?.fullPriceInCents || 0}
+                depositAmount={selectedSession?.depositPriceInCents || 0}
+                fullAmount={selectedSession?.fullPriceInCents || 0}
                 onPaymentComplete={handlePaymentComplete}
-                onBack={() => setStep(3)}
+                onBack={() => setStep(2)}
               />
             </div>
           )}

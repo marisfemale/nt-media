@@ -1,13 +1,5 @@
 import Image from "next/image"
 
-const stats = [
-  { value: "150+", label: "Projects Completed" },
-  { value: "50+", label: "Happy Clients" },
-  { value: "5+", label: "Years Experience" },
-  { value: "10+", label: "Awards Won" },
-]
-//const SUPABASE_URL = "https://lodtmdpsufwnkmcpdrwm.supabase.co/storage/v1/object/public/images";
-
 export function AboutSection() {
   return (
     <section id="about" className="py-24 md:py-32 bg-background">
@@ -84,20 +76,6 @@ export function AboutSection() {
                 connections. Let us help you tell your story.
               </p>
             </div>
-
-            {/* Stats */}
-            {/* <div className="grid grid-cols-2 md:grid-cols-4 gap-6 pt-8 border-t border-border">
-              {stats.map((stat) => (
-                <div key={stat.label}>
-                  <p className="text-3xl md:text-4xl font-serif font-bold text-foreground mb-1">
-                    {stat.value}
-                  </p>
-                  <p className="text-xs uppercase tracking-widest text-muted-foreground">
-                    {stat.label}
-                  </p>
-                </div>
-              ))}
-            </div> */}
           </div>
         </div>
       </div>

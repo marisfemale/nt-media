@@ -1,7 +1,13 @@
 import { del } from "@vercel/blob"
 import { type NextRequest, NextResponse } from "next/server"
 
+import { requireAdminRequest } from "@/lib/admin-auth"
+
 export async function DELETE(request: NextRequest) {
+  if (!(await requireAdminRequest(request))) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  }
+
   try {
     const { url } = await request.json()
 

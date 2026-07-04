@@ -1,7 +1,7 @@
 "use server"
 
 import { stripe } from "@/lib/stripe"
-import { getSessionProduct } from "@/lib/products"
+import { getSessionPackage } from "@/lib/session-packages"
 
 export async function startDepositCheckoutSession(
   sessionId: string,
@@ -9,7 +9,7 @@ export async function startDepositCheckoutSession(
   customerEmail: string,
   customerName: string
 ) {
-  const product = getSessionProduct(sessionId)
+  const product = await getSessionPackage(sessionId)
   if (!product) {
     throw new Error(`Session product with id "${sessionId}" not found`)
   }
@@ -41,6 +41,10 @@ export async function startDepositCheckoutSession(
     },
     payment_method_types: ["card"],
   })
+
+  if (!session.client_secret) {
+    throw new Error("Stripe did not return a checkout client secret")
+  }
 
   return session.client_secret
 }

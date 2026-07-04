@@ -1,4 +1,4 @@
-import { createClient } from "@/lib/supabase/server"
+import { prisma } from "@/lib/db"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
@@ -6,20 +6,21 @@ import { Badge } from "@/components/ui/badge"
 import { Plus, Eye, EyeOff, Calendar, User } from "lucide-react"
 import Image from "next/image"
 
-export default async function GalleriesPage() {
-  const supabase = await createClient()
+export const dynamic = "force-dynamic"
 
-  const { data: galleries } = await supabase
-    .from("galleries")
-    .select(`
-      *,
-      gallery_photos(count)
-    `)
-    .order("created_at", { ascending: false })
+export default async function GalleriesPage() {
+  const galleries = await prisma.gallery.findMany({
+    include: {
+      _count: {
+        select: { photos: true },
+      },
+    },
+    orderBy: { created_at: "desc" },
+  })
 
   return (
-    <div className="p-8">
-      <div className="flex items-center justify-between mb-8">
+    <div className="p-6 md:p-8">
+      <div className="flex flex-col gap-4 mb-8 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-3xl font-serif font-bold text-foreground">Galleries</h1>
           <p className="text-muted-foreground mt-1">Manage client photo galleries</p>
@@ -32,7 +33,7 @@ export default async function GalleriesPage() {
         </Button>
       </div>
 
-      {galleries && galleries.length > 0 ? (
+      {galleries.length > 0 ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {galleries.map((gallery) => (
             <Link key={gallery.id} href={`/admin/galleries/${gallery.id}`}>
@@ -74,7 +75,7 @@ export default async function GalleriesPage() {
                     )}
                   </div>
                   <div className="mt-3 pt-3 border-t border-border flex items-center justify-between text-xs text-muted-foreground">
-                    <span>{gallery.gallery_photos?.[0]?.count || 0} photos</span>
+                    <span>{gallery._count.photos} photos</span>
                     <span className="font-mono">{gallery.access_code}</span>
                   </div>
                 </CardContent>

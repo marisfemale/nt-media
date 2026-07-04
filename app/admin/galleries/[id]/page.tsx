@@ -4,7 +4,6 @@ import React from "react"
 
 import { useEffect, useState, useCallback } from "react"
 import { useParams, useRouter } from "next/navigation"
-import { createClient } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -32,7 +31,6 @@ import {
   ExternalLink,
   Upload,
   X,
-  ImageIcon,
   Star,
 } from "lucide-react"
 import Link from "next/link"
@@ -48,6 +46,10 @@ interface Gallery {
   access_code: string
   is_public: boolean
   cover_image_url: string | null
+  portfolio_enabled: boolean
+  portfolio_category: string
+  portfolio_cta: string | null
+  portfolio_sort_order: number
 }
 
 interface Photo {
@@ -59,6 +61,8 @@ interface Photo {
   is_public: boolean
   sort_order: number
 }
+
+const portfolioCategories = ["Photography", "Scripted", "Unscripted", "Commercial", "Events"]
 
 export default function GalleryDetailPage() {
   const params = useParams()
@@ -78,20 +82,15 @@ export default function GalleryDetailPage() {
   const [uploadProgress, setUploadProgress] = useState<{ [key: string]: number }>({})
   const [isDragging, setIsDragging] = useState(false)
 
-  const supabase = createClient()
-
   const fetchGallery = useCallback(async () => {
-    const { data: galleryData } = await supabase
-      .from("galleries")
-      .select("*")
-      .eq("id", galleryId)
-      .single()
+    const response = await fetch(`/api/admin/galleries/${galleryId}`)
 
-    const { data: photosData } = await supabase
-      .from("gallery_photos")
-      .select("*")
-      .eq("gallery_id", galleryId)
-      .order("sort_order", { ascending: true })
+    if (!response.ok) {
+      setIsLoading(false)
+      return
+    }
+
+    const { gallery: galleryData, photos: photosData } = await response.json()
 
     if (galleryData) {
       setGallery(galleryData)
@@ -101,7 +100,7 @@ export default function GalleryDetailPage() {
       setPhotos(photosData)
     }
     setIsLoading(false)
-  }, [galleryId, supabase])
+  }, [galleryId])
 
   useEffect(() => {
     fetchGallery()
@@ -111,9 +110,10 @@ export default function GalleryDetailPage() {
     if (!formData) return
     setIsSaving(true)
 
-    const { error } = await supabase
-      .from("galleries")
-      .update({
+    const response = await fetch(`/api/admin/galleries/${galleryId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
         title: formData.title,
         description: formData.description,
         client_name: formData.client_name,
@@ -121,12 +121,16 @@ export default function GalleryDetailPage() {
         shoot_date: formData.shoot_date,
         is_public: formData.is_public,
         access_code: formData.access_code,
-      })
-      .eq("id", galleryId)
+        portfolio_enabled: formData.portfolio_enabled,
+        portfolio_category: formData.portfolio_category,
+        portfolio_cta: formData.portfolio_cta || null,
+        portfolio_sort_order: formData.portfolio_sort_order,
+      }),
+    })
 
     setIsSaving(false)
 
-    if (error) {
+    if (!response.ok) {
       alert("Error saving gallery")
       return
     }
@@ -139,33 +143,35 @@ export default function GalleryDetailPage() {
     if (!newPhotoUrl) return
     setIsAddingPhoto(true)
 
-    const { data, error } = await supabase
-      .from("gallery_photos")
-      .insert({
+    const response = await fetch(`/api/admin/galleries/${galleryId}/photos`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
         gallery_id: galleryId,
         image_url: newPhotoUrl,
         is_public: false,
         sort_order: photos.length,
-      })
-      .select()
-      .single()
+      }),
+    })
 
     setIsAddingPhoto(false)
 
-    if (error) {
+    if (!response.ok) {
       alert("Error adding photo")
       return
     }
 
+    const data = await response.json()
     setPhotos([...photos, data])
     setNewPhotoUrl("")
 
     // Set as cover if first photo
     if (photos.length === 0) {
-      await supabase
-        .from("galleries")
-        .update({ cover_image_url: newPhotoUrl })
-        .eq("id", galleryId)
+      await fetch(`/api/admin/galleries/${galleryId}/cover`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ cover_image_url: newPhotoUrl }),
+      })
       if (gallery) {
         setGallery({ ...gallery, cover_image_url: newPhotoUrl })
       }
@@ -235,28 +241,30 @@ export default function GalleryDetailPage() {
         setUploadProgress((prev) => ({ ...prev, [file.name]: 50 }))
 
         // Add to database
-        const { data, error } = await supabase
-          .from("gallery_photos")
-          .insert({
+        const photoResponse = await fetch(`/api/admin/galleries/${galleryId}/photos`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
             gallery_id: galleryId,
             image_url: url,
             is_public: false,
             sort_order: photos.length + i,
-          })
-          .select()
-          .single()
+          }),
+        })
 
-        if (error) throw error
+        if (!photoResponse.ok) throw new Error("Photo database insert failed")
 
+        const data = await photoResponse.json()
         newPhotos.push(data)
         setUploadProgress((prev) => ({ ...prev, [file.name]: 100 }))
 
         // Set as cover if first photo
         if (photos.length === 0 && i === 0) {
-          await supabase
-            .from("galleries")
-            .update({ cover_image_url: url })
-            .eq("id", galleryId)
+          await fetch(`/api/admin/galleries/${galleryId}/cover`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ cover_image_url: url }),
+          })
           if (gallery) {
             setGallery({ ...gallery, cover_image_url: url })
           }
@@ -276,23 +284,23 @@ export default function GalleryDetailPage() {
   const handleDeletePhoto = async (photoId: string) => {
     if (!confirm("Delete this photo?")) return
 
-    const { error } = await supabase
-      .from("gallery_photos")
-      .delete()
-      .eq("id", photoId)
+    const response = await fetch(`/api/admin/gallery-photos/${photoId}`, {
+      method: "DELETE",
+    })
 
-    if (!error) {
+    if (response.ok) {
       setPhotos(photos.filter((p) => p.id !== photoId))
     }
   }
 
   const handleTogglePhotoPublic = async (photoId: string, isPublic: boolean) => {
-    const { error } = await supabase
-      .from("gallery_photos")
-      .update({ is_public: !isPublic })
-      .eq("id", photoId)
+    const response = await fetch(`/api/admin/gallery-photos/${photoId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ is_public: !isPublic }),
+    })
 
-    if (!error) {
+    if (response.ok) {
       setPhotos(
         photos.map((p) =>
           p.id === photoId ? { ...p, is_public: !isPublic } : p
@@ -302,25 +310,28 @@ export default function GalleryDetailPage() {
   }
 
   const handleSetCover = async (imageUrl: string) => {
-    const { error } = await supabase
-      .from("galleries")
-      .update({ cover_image_url: imageUrl })
-      .eq("id", galleryId)
+    const response = await fetch(`/api/admin/galleries/${galleryId}/cover`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ cover_image_url: imageUrl }),
+    })
 
-    if (!error && gallery) {
+    if (response.ok && gallery) {
       setGallery({ ...gallery, cover_image_url: imageUrl })
+      if (formData) {
+        setFormData({ ...formData, cover_image_url: imageUrl })
+      }
     }
   }
 
   const handleDeleteGallery = async () => {
     if (!confirm("Are you sure you want to delete this gallery? This cannot be undone.")) return
 
-    const { error } = await supabase
-      .from("galleries")
-      .delete()
-      .eq("id", galleryId)
+    const response = await fetch(`/api/admin/galleries/${galleryId}`, {
+      method: "DELETE",
+    })
 
-    if (!error) {
+    if (response.ok) {
       router.push("/admin/galleries")
     }
   }
@@ -441,6 +452,78 @@ export default function GalleryDetailPage() {
                       onCheckedChange={(checked) => setFormData({ ...formData, is_public: checked })}
                     />
                   </div>
+                  <div className="rounded-lg border border-border bg-background p-4">
+                    <div className="flex items-center justify-between gap-4">
+                      <div>
+                        <Label>Show in Selected Work</Label>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          Uses this gallery&apos;s cover image on the home page.
+                        </p>
+                      </div>
+                      <Switch
+                        checked={formData.portfolio_enabled}
+                        onCheckedChange={(checked) =>
+                          setFormData({ ...formData, portfolio_enabled: checked })
+                        }
+                      />
+                    </div>
+
+                    {formData.portfolio_enabled && (
+                      <div className="mt-4 space-y-4">
+                        <div className="space-y-2">
+                          <Label htmlFor="portfolioCategory">Category</Label>
+                          <select
+                            id="portfolioCategory"
+                            value={formData.portfolio_category}
+                            onChange={(event) =>
+                              setFormData({
+                                ...formData,
+                                portfolio_category: event.target.value,
+                              })
+                            }
+                            className="h-10 w-full rounded-md border border-border bg-input px-3 text-sm text-foreground"
+                          >
+                            {portfolioCategories.map((category) => (
+                              <option key={category} value={category}>
+                                {category}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="portfolioCta">Button text</Label>
+                          <Input
+                            id="portfolioCta"
+                            value={formData.portfolio_cta || ""}
+                            onChange={(event) =>
+                              setFormData({
+                                ...formData,
+                                portfolio_cta: event.target.value,
+                              })
+                            }
+                            placeholder="View gallery"
+                            className="bg-input border-border"
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="portfolioSort">Display order</Label>
+                          <Input
+                            id="portfolioSort"
+                            type="number"
+                            min="0"
+                            value={formData.portfolio_sort_order}
+                            onChange={(event) =>
+                              setFormData({
+                                ...formData,
+                                portfolio_sort_order: Number.parseInt(event.target.value || "0", 10),
+                              })
+                            }
+                            className="bg-input border-border"
+                          />
+                        </div>
+                      </div>
+                    )}
+                  </div>
                   <Button
                     onClick={handleSave}
                     disabled={isSaving}
@@ -455,6 +538,12 @@ export default function GalleryDetailPage() {
                     <span className="text-muted-foreground">Status</span>
                     <Badge variant={gallery.is_public ? "default" : "secondary"}>
                       {gallery.is_public ? "Public" : "Private"}
+                    </Badge>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-muted-foreground">Selected Work</span>
+                    <Badge variant={gallery.portfolio_enabled ? "default" : "secondary"}>
+                      {gallery.portfolio_enabled ? gallery.portfolio_category : "Hidden"}
                     </Badge>
                   </div>
                   <div className="flex items-center justify-between">
@@ -713,7 +802,7 @@ export default function GalleryDetailPage() {
               ) : (
                 <div className="text-center py-12 text-muted-foreground">
                   <Upload className="w-12 h-12 mx-auto mb-4 opacity-50" />
-                  <p>No photos yet. Click "Add Photos" to upload images.</p>
+                  <p>No photos yet. Click &quot;Add Photos&quot; to upload images.</p>
                 </div>
               )}
             </CardContent>

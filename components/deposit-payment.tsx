@@ -22,7 +22,7 @@ interface DepositPaymentProps {
   customerName: string
   depositAmount: number
   fullAmount: number
-  onPaymentComplete: () => void
+  onPaymentComplete: (method: PaymentMethod) => void
   onBack: () => void
 }
 
@@ -70,7 +70,7 @@ export function DepositPayment({
 
   const handleBankPaymentConfirmation = () => {
     setBankPaymentConfirmed(true)
-    onPaymentComplete()
+    onPaymentComplete("bank")
   }
 
   return (
@@ -86,7 +86,7 @@ export function DepositPayment({
             <span className="text-foreground">{formatPrice(fullAmount)}</span>
           </div>
           <div className="flex justify-between font-medium text-accent">
-            <span>Deposit Required (50%)</span>
+            <span>Deposit (50%)</span>
             <span>{formatPrice(depositAmount)}</span>
           </div>
           <div className="flex justify-between text-muted-foreground">
@@ -101,7 +101,9 @@ export function DepositPayment({
                   {bookingReference}
                 </code>
                 <button
+                  type="button"
                   onClick={() => copyToClipboard(bookingReference, "reference")}
+                  aria-label="Copy booking reference"
                   className="p-1 hover:bg-secondary rounded transition-colors"
                   title="Copy reference"
                 >
@@ -126,6 +128,7 @@ export function DepositPayment({
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {/* Card / Apple Pay */}
             <button
+              type="button"
               onClick={() => setPaymentMethod("card")}
               className="group p-6 border border-border rounded-xl bg-card hover:border-accent/50 transition-all text-left"
             >
@@ -170,6 +173,7 @@ export function DepositPayment({
 
             {/* Bank Transfer / BPAY / PayID */}
             <button
+              type="button"
               onClick={() => setPaymentMethod("bank")}
               className="group p-6 border border-border rounded-xl bg-card hover:border-accent/50 transition-all text-left"
             >
@@ -182,13 +186,13 @@ export function DepositPayment({
                     BPAY / PayID / Bank Transfer
                   </h4>
                   <p className="text-sm text-muted-foreground">
-                    1-2 business days
+                    Submit request now
                   </p>
                 </div>
               </div>
               <p className="text-sm text-muted-foreground">
-                Pay via BPAY, PayID, or direct bank transfer. Booking confirmed
-                once payment is received.
+                Save your booking request and pay the deposit by BPAY, PayID, or
+                direct bank transfer. We confirm once payment is received.
               </p>
               <div className="flex items-center gap-3 mt-4">
                 <span className="text-xs bg-background px-2 py-1 rounded text-muted-foreground">
@@ -224,6 +228,7 @@ export function DepositPayment({
               Pay with Card / Apple Pay
             </h3>
             <button
+              type="button"
               onClick={() => setPaymentMethod(null)}
               className="text-sm text-accent hover:underline"
             >
@@ -234,8 +239,8 @@ export function DepositPayment({
             <EmbeddedCheckoutProvider
               stripe={stripePromise}
               options={{
-                clientSecret: startCheckoutSessionForDeposit,
-                onComplete: onPaymentComplete,
+                fetchClientSecret: startCheckoutSessionForDeposit,
+                onComplete: () => onPaymentComplete("card"),
               }}
             >
               <EmbeddedCheckout />
@@ -252,6 +257,7 @@ export function DepositPayment({
               Bank Payment Details
             </h3>
             <button
+              type="button"
               onClick={() => setPaymentMethod(null)}
               className="text-sm text-accent hover:underline"
             >
@@ -265,8 +271,8 @@ export function DepositPayment({
               <code className="bg-background px-2 py-0.5 rounded font-mono">
                 {bookingReference}
               </code>{" "}
-              as the payment reference/description. Your booking will be
-              confirmed within 1-2 business days once payment is received.
+              as the payment reference/description. Submit the request below,
+              then complete the transfer when you are ready.
             </p>
           </div>
 
@@ -286,9 +292,11 @@ export function DepositPayment({
                       {BANK_DETAILS.bpayBillerCode}
                     </code>
                     <button
+                      type="button"
                       onClick={() =>
                         copyToClipboard(BANK_DETAILS.bpayBillerCode, "biller")
                       }
+                      aria-label="Copy BPAY biller code"
                       className="p-1 hover:bg-secondary rounded transition-colors"
                     >
                       {copied === "biller" ? (
@@ -306,9 +314,11 @@ export function DepositPayment({
                       {bookingReference}
                     </code>
                     <button
+                      type="button"
                       onClick={() =>
                         copyToClipboard(bookingReference, "bpay-ref")
                       }
+                      aria-label="Copy BPAY reference"
                       className="p-1 hover:bg-secondary rounded transition-colors"
                     >
                       {copied === "bpay-ref" ? (
@@ -343,7 +353,9 @@ export function DepositPayment({
                       {BANK_DETAILS.payId}
                     </code>
                     <button
+                      type="button"
                       onClick={() => copyToClipboard(BANK_DETAILS.payId, "payid")}
+                      aria-label="Copy PayID"
                       className="p-1 hover:bg-secondary rounded transition-colors"
                     >
                       {copied === "payid" ? (
@@ -361,9 +373,11 @@ export function DepositPayment({
                       {bookingReference}
                     </code>
                     <button
+                      type="button"
                       onClick={() =>
                         copyToClipboard(bookingReference, "payid-ref")
                       }
+                      aria-label="Copy PayID description"
                       className="p-1 hover:bg-secondary rounded transition-colors"
                     >
                       {copied === "payid-ref" ? (
@@ -404,7 +418,9 @@ export function DepositPayment({
                       {BANK_DETAILS.bsb}
                     </code>
                     <button
+                      type="button"
                       onClick={() => copyToClipboard(BANK_DETAILS.bsb, "bsb")}
+                      aria-label="Copy BSB"
                       className="p-1 hover:bg-secondary rounded transition-colors"
                     >
                       {copied === "bsb" ? (
@@ -422,12 +438,14 @@ export function DepositPayment({
                       {BANK_DETAILS.accountNumber}
                     </code>
                     <button
+                      type="button"
                       onClick={() =>
                         copyToClipboard(
                           BANK_DETAILS.accountNumber.replace(/\s/g, ""),
                           "acc"
                         )
                       }
+                      aria-label="Copy account number"
                       className="p-1 hover:bg-secondary rounded transition-colors"
                     >
                       {copied === "acc" ? (
@@ -460,7 +478,7 @@ export function DepositPayment({
               onClick={handleBankPaymentConfirmation}
               className="bg-accent text-accent-foreground hover:bg-accent/90 px-8 py-6"
             >
-              I&apos;ve Made the Payment
+              Submit Booking Request
             </Button>
           </div>
         </div>

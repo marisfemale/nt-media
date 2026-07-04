@@ -1,0 +1,139 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Booking {
+  id                  String   @id @default(uuid()) @db.Uuid
+  booking_reference   String?  @unique
+  name                String
+  email               String
+  phone               String?
+  service_type        String
+  booking_date        DateTime @db.Date
+  booking_time        String
+  booking_start_time  String?
+  duration_minutes    Int?
+  project_description String?
+  budget_range        String?
+  payment_method      String?
+  status              String   @default("pending")
+  created_at          DateTime @default(now()) @db.Timestamptz(6)
+  updated_at          DateTime @updatedAt @db.Timestamptz(6)
+
+  @@index([booking_date])
+  @@index([status])
+  @@map("bookings")
+}
+
+model ContactInquiry {
+  id           String   @id @default(uuid()) @db.Uuid
+  name         String
+  email        String
+  phone        String?
+  project_type String
+  message      String
+  status       String   @default("new")
+  created_at   DateTime @default(now()) @db.Timestamptz(6)
+  updated_at   DateTime @updatedAt @db.Timestamptz(6)
+
+  @@index([status])
+  @@index([created_at])
+  @@map("contact_inquiries")
+}
+
+model BlockedDate {
+  id           String   @id @default(uuid()) @db.Uuid
+  blocked_date DateTime @unique @db.Date
+  reason       String?
+  created_at   DateTime @default(now()) @db.Timestamptz(6)
+
+  @@map("blocked_dates")
+}
+
+model SessionPackage {
+  id                  String   @id
+  label               String
+  duration            String
+  description         String
+  fullPriceInCents    Int
+  depositPriceInCents Int
+  isActive            Boolean  @default(true)
+  sortOrder           Int      @default(0)
+  created_at          DateTime @default(now()) @db.Timestamptz(6)
+  updated_at          DateTime @updatedAt @db.Timestamptz(6)
+
+  @@index([isActive, sortOrder])
+  @@map("session_packages")
+}
+
+model Gallery {
+  id              String                 @id @default(uuid()) @db.Uuid
+  title           String
+  description     String?
+  client_name     String
+  client_email    String
+  shoot_date      DateTime?              @db.Date
+  access_code     String                 @unique
+  is_public       Boolean                @default(false)
+  cover_image_url String?
+  portfolio_enabled Boolean               @default(false)
+  portfolio_category String               @default("Photography")
+  portfolio_cta    String?
+  portfolio_sort_order Int                @default(0)
+  created_at      DateTime               @default(now()) @db.Timestamptz(6)
+  updated_at      DateTime               @updatedAt @db.Timestamptz(6)
+  photos          GalleryPhoto[]
+  access_requests GalleryAccessRequest[]
+
+  @@index([is_public])
+  @@index([portfolio_enabled, portfolio_sort_order])
+  @@index([created_at])
+  @@map("galleries")
+}
+
+model AppSetting {
+  key        String   @id
+  value      String
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+  updated_at DateTime @updatedAt @db.Timestamptz(6)
+
+  @@map("app_settings")
+}
+
+model GalleryPhoto {
+  id            String   @id @default(uuid()) @db.Uuid
+  gallery_id    String   @db.Uuid
+  image_url     String
+  thumbnail_url String?
+  title         String?
+  is_public     Boolean  @default(false)
+  sort_order    Int      @default(0)
+  created_at    DateTime @default(now()) @db.Timestamptz(6)
+  gallery       Gallery  @relation(fields: [gallery_id], references: [id], onDelete: Cascade)
+
+  @@index([gallery_id, sort_order])
+  @@index([is_public])
+  @@map("gallery_photos")
+}
+
+model GalleryAccessRequest {
+  id               String    @id @default(uuid()) @db.Uuid
+  gallery_id       String    @db.Uuid
+  requester_name   String
+  requester_email  String
+  reason           String?
+  access_token     String    @unique
+  token_expires_at DateTime? @db.Timestamptz(6)
+  is_approved      Boolean   @default(false)
+  created_at       DateTime  @default(now()) @db.Timestamptz(6)
+  gallery          Gallery   @relation(fields: [gallery_id], references: [id], onDelete: Cascade)
+
+  @@index([gallery_id])
+  @@index([is_approved])
+  @@map("gallery_access_requests")
+}

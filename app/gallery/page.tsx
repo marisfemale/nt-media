@@ -26,7 +26,7 @@ export default function GalleryAccessPage() {
   }
 
   return (
-    <div className="min-h-screen bg-background flex items-center justify-center p-6">
+    <div className="min-h-screen bg-background flex items-center justify-center p-4 sm:p-6">
       <div className="w-full max-w-md">
         <Link
           href="/"
@@ -41,7 +41,7 @@ export default function GalleryAccessPage() {
             <Images className="w-8 h-8 text-accent" />
           </div>
           <h1 className="text-3xl font-serif font-bold text-foreground">Client Gallery</h1>
-          <p className="text-muted-foreground mt-2">
+          <p className="text-muted-foreground mt-2 leading-6">
             Enter your access code to view your photos
           </p>
         </div>
@@ -53,7 +53,7 @@ export default function GalleryAccessPage() {
               Enter Access Code
             </CardTitle>
             <CardDescription>
-              Your access code was provided by NT Media after your shoot.
+              Your access code is usually in your gallery delivery email. It starts with NT-.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -71,7 +71,11 @@ export default function GalleryAccessPage() {
                   className="bg-input border-border text-center font-mono text-lg tracking-widest"
                   autoComplete="off"
                 />
-                {error && <p className="text-sm text-destructive">{error}</p>}
+                {error && (
+                  <p role="alert" className="text-sm text-destructive">
+                    {error}
+                  </p>
+                )}
               </div>
               <Button
                 type="submit"

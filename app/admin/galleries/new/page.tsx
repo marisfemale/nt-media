@@ -4,14 +4,13 @@ import React from "react"
 
 import { useState } from "react"
 import { useRouter } from "next/navigation"
-import { createClient } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Switch } from "@/components/ui/switch"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { ArrowLeft, Loader2 } from "lucide-react"
+import { AlertCircle, ArrowLeft, Loader2 } from "lucide-react"
 import Link from "next/link"
 
 function generateAccessCode(): string {
@@ -26,6 +25,7 @@ function generateAccessCode(): string {
 export default function NewGalleryPage() {
   const router = useRouter()
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [createError, setCreateError] = useState("")
   const [formData, setFormData] = useState({
     title: "",
     description: "",
@@ -39,11 +39,12 @@ export default function NewGalleryPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setIsSubmitting(true)
+    setCreateError("")
 
-    const supabase = createClient()
-    const { data, error } = await supabase
-      .from("galleries")
-      .insert({
+    const response = await fetch("/api/admin/galleries", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
         title: formData.title,
         description: formData.description || null,
         client_name: formData.clientName,
@@ -51,18 +52,18 @@ export default function NewGalleryPage() {
         shoot_date: formData.shootDate || null,
         is_public: formData.isPublic,
         access_code: formData.accessCode,
-      })
-      .select()
-      .single()
+      }),
+    })
 
     setIsSubmitting(false)
 
-    if (error) {
-      console.error("Error creating gallery:", error)
-      alert("Error creating gallery. Please try again.")
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ error: "Error creating gallery. Please try again." }))
+      setCreateError(error.error || "Error creating gallery. Please try again.")
       return
     }
 
+    const data = await response.json()
     router.push(`/admin/galleries/${data.id}`)
   }
 
@@ -77,6 +78,16 @@ export default function NewGalleryPage() {
       </Link>
 
       <h1 className="text-3xl font-serif font-bold text-foreground mb-8">Create New Gallery</h1>
+
+      {createError && (
+        <div
+          role="alert"
+          className="mb-6 flex items-start gap-3 rounded-lg border border-destructive/30 bg-destructive/10 p-4 text-sm text-foreground"
+        >
+          <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
+          <p>{createError}</p>
+        </div>
+      )}
 
       <form onSubmit={handleSubmit}>
         <Card>

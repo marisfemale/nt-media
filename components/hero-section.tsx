@@ -2,7 +2,7 @@
 
 import Image from "next/image"
 import Link from "next/link"
-import { ArrowDown, Play, Calendar } from "lucide-react"
+import { ArrowDown, Calendar } from "lucide-react"
 import { Button } from "@/components/ui/button"
 
 export function HeroSection() {
@@ -60,17 +60,6 @@ export function HeroSection() {
             >
               <Link href="#work">View Our Work</Link>
             </Button>
-            <Button
-              asChild
-              variant="outline"
-              size="lg"
-              className="border-foreground/30 text-foreground hover:bg-foreground/10 rounded-none px-8 py-6 text-sm uppercase tracking-widest bg-transparent"
-            >
-              <Link href="#contact" className="flex items-center gap-3">
-                <Play size={16} className="fill-current" />
-                Watch Showreel
-              </Link>
-            </Button>
           </div>
         </div>
       </div>
@@ -98,7 +87,7 @@ export function HeroSection() {
 
       <div className="hidden lg:block absolute right-8 top-1/2 -translate-y-1/2 z-10">
         <p className="text-xs uppercase tracking-[0.3em] text-muted-foreground rotate-90 origin-center whitespace-nowrap">
-          Est. 2024
+          Darwin, NT
         </p>
       </div>
     </section>

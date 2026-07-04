@@ -3,63 +3,27 @@
 import { useState } from "react"
 import Image from "next/image"
 import Link from "next/link"
-import { ArrowUpRight, Calendar } from "lucide-react"
+import { Calendar, Images } from "lucide-react"
 import { Button } from "@/components/ui/button"
 
-const categories = ["All", "Photography", "Scripted", "Unscripted"]
+interface PortfolioItem {
+  id: string
+  title: string
+  category: string
+  image: string
+  description: string
+  cta: string
+  href: string
+}
 
-const portfolioItems = [
-  {
-    id: 1,
-    title: "Cinematic Portrait",
-    category: "Photography",
-    image: "/images/portfolio-1.jpg",
-    description: "Cinematic photography",
-  },
-  {
-    id: 2,
-    title: "Pre-wedding photography",
-    category: "Scripted",
-    image: "/images/portfolio-2.jpg",
-    //description: "Capturing authentic moments",
-  },
-  {
-    id: 3,
-    title: "Studio shoot",
-    category: "Snscripted",
-    image: "/images/portfolio-3.jpg",
-    description: "Christmas photobooth",
-  },
-  {
-    id: 4,
-    title: "Live Event Coverage",
-    category: "Unscripted",
-    image: "/images/portfolio-4.jpg",
-    description: "Multiculture event",
-  },
-  {
-    id: 5,
-    title: "Nature Documentary",
-    category: "Unscripted",
-    image: "/images/portfolio-5.jpg",
-    description: "Aerial cinematography",
-  },
-  {
-    id: 6,
-    title: "Product Showcase",
-    category: "Photography",
-    image: "/images/portfolio-6.jpg",
-    description: "Commercial product photography",
-  },
-]
-
-export function PortfolioSection() {
+export function PortfolioSection({ items }: { items: PortfolioItem[] }) {
   const [activeCategory, setActiveCategory] = useState("All")
+  const categories = ["All", ...Array.from(new Set(items.map((item) => item.category)))]
 
   const filteredItems =
     activeCategory === "All"
-      ? portfolioItems
-      : portfolioItems.filter((item) => item.category === activeCategory)
+      ? items
+      : items.filter((item) => item.category === activeCategory)
 
   return (
     <section id="work" className="py-24 md:py-32 bg-background">
@@ -80,61 +44,77 @@ export function PortfolioSection() {
         </div>
 
         {/* Category Filter */}
-        <div className="flex flex-wrap gap-4 mb-12">
-          {categories.map((category) => (
-            <button
-              key={category}
-              type="button"
-              onClick={() => setActiveCategory(category)}
-              className={`px-6 py-2 text-sm uppercase tracking-widest transition-all ${
-                activeCategory === category
-                  ? "bg-foreground text-background"
-                  : "border border-border text-muted-foreground hover:text-foreground hover:border-foreground"
-              }`}
-            >
-              {category}
-            </button>
-          ))}
-        </div>
+        {items.length > 0 && (
+          <div className="flex flex-wrap gap-3 mb-12" aria-label="Filter portfolio by service type">
+            {categories.map((category) => (
+              <button
+                key={category}
+                type="button"
+                onClick={() => setActiveCategory(category)}
+                className={`min-h-11 px-5 py-2 text-sm uppercase tracking-widest transition-all ${
+                  activeCategory === category
+                    ? "bg-foreground text-background"
+                    : "border border-border text-muted-foreground hover:text-foreground hover:border-foreground"
+                }`}
+              >
+                {category}
+              </button>
+            ))}
+          </div>
+        )}
 
         {/* Portfolio Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {filteredItems.length > 0 ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {filteredItems.map((item) => (
             <article
               key={item.id}
-              className="group relative overflow-hidden aspect-[4/5] cursor-pointer"
+              className="group overflow-hidden border border-border bg-card"
             >
-              <Image
-                src={item.image || "/placeholder.svg"}
-                alt={item.title}
-                fill
-                className="object-cover transition-transform duration-700 group-hover:scale-105"
-              />
-              {/* Overlay */}
-              <div className="absolute inset-0 bg-background/60 opacity-0 group-hover:opacity-100 transition-opacity duration-500 flex flex-col justify-end p-6">
+              <div className="relative aspect-[4/5] overflow-hidden">
+                <Image
+                  src={item.image || "/placeholder.svg"}
+                  alt={item.title}
+                  fill
+                  className="object-cover transition-transform duration-700 group-hover:scale-105"
+                />
+                <div className="absolute top-4 right-4 px-3 py-1 bg-background/90 backdrop-blur-sm">
+                  <span className="text-xs uppercase tracking-widest text-foreground">
+                    {item.category}
+                  </span>
+                </div>
+              </div>
+              <div className="p-5">
                 <p className="text-xs uppercase tracking-widest text-accent mb-2">
                   {item.category}
                 </p>
-                <h3 className="text-xl font-serif font-bold text-foreground mb-1">
+                <h3 className="text-xl font-serif font-bold text-foreground mb-2">
                   {item.title}
                 </h3>
-                <p className="text-sm text-muted-foreground mb-4">
+                <p className="text-sm leading-6 text-muted-foreground mb-5">
                   {item.description}
                 </p>
-                <div className="flex items-center gap-2 text-sm text-foreground">
-                  <span className="uppercase tracking-widest">View Project</span>
-                  <ArrowUpRight size={16} />
-                </div>
-              </div>
-              {/* Category Badge */}
-              <div className="absolute top-4 right-4 px-3 py-1 bg-background/80 backdrop-blur-sm">
-                <span className="text-xs uppercase tracking-widest text-muted-foreground">
-                  {item.category}
-                </span>
+                <Button
+                  asChild
+                  variant="outline"
+                  className="w-full border-border text-foreground hover:bg-accent hover:text-accent-foreground"
+                >
+                  <Link href={item.href}>
+                    <Images size={16} />
+                    {item.cta}
+                  </Link>
+                </Button>
               </div>
             </article>
           ))}
-        </div>
+          </div>
+        ) : (
+          <div className="border border-dashed border-border p-10 text-center">
+            <p className="text-sm text-muted-foreground">
+              Selected galleries will appear here after they are enabled from the admin area.
+            </p>
+          </div>
+        )}
 
         {/* Section CTA */}
         <div className="mt-16 flex flex-col sm:flex-row items-center justify-center gap-6">
@@ -149,6 +129,17 @@ export function PortfolioSection() {
             <Link href="#booking" className="flex items-center gap-2">
               <Calendar size={18} />
               Book Your Session
+            </Link>
+          </Button>
+          <Button
+            asChild
+            size="lg"
+            variant="outline"
+            className="border-border px-8 py-6 whitespace-nowrap"
+          >
+            <Link href="/gallery/browse" className="flex items-center gap-2">
+              <Images size={18} />
+              View Public Galleries
             </Link>
           </Button>
         </div>

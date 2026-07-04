@@ -1,47 +1,54 @@
-import { createClient } from "@/lib/supabase/server"
+import { prisma } from "@/lib/db"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Images, Calendar, Users, Eye } from "lucide-react"
+import { Calendar, Eye, Images, MessageSquare } from "lucide-react"
 import Link from "next/link"
 
-export default async function AdminDashboard() {
-  const supabase = await createClient()
+export const dynamic = "force-dynamic"
 
+export default async function AdminDashboard() {
   // Fetch counts
-  const [galleriesResult, bookingsResult, accessRequestsResult] = await Promise.all([
-    supabase.from("galleries").select("id", { count: "exact", head: true }),
-    supabase.from("bookings").select("id", { count: "exact", head: true }),
-    supabase.from("gallery_access_requests").select("id", { count: "exact", head: true }).eq("is_approved", false),
+  const [galleriesCount, bookingsCount, inquiriesCount, accessRequestsCount] = await Promise.all([
+    prisma.gallery.count(),
+    prisma.booking.count(),
+    prisma.contactInquiry.count({ where: { status: "new" } }),
+    prisma.galleryAccessRequest.count({ where: { is_approved: false } }),
   ])
 
   const stats = [
     {
       title: "Total Galleries",
-      value: galleriesResult.count || 0,
+      value: galleriesCount,
       icon: Images,
       href: "/admin/galleries",
     },
     {
       title: "Total Bookings",
-      value: bookingsResult.count || 0,
+      value: bookingsCount,
       icon: Calendar,
       href: "/admin/bookings",
     },
     {
+      title: "New Inquiries",
+      value: inquiriesCount,
+      icon: MessageSquare,
+      href: "/admin/inquiries",
+    },
+    {
       title: "Pending Access Requests",
-      value: accessRequestsResult.count || 0,
+      value: accessRequestsCount,
       icon: Eye,
       href: "/admin/galleries",
     },
   ]
 
   return (
-    <div className="p-8">
+    <div className="p-6 md:p-8">
       <div className="mb-8">
         <h1 className="text-3xl font-serif font-bold text-foreground">Dashboard</h1>
         <p className="text-muted-foreground mt-1">Welcome to NT Media Admin</p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4 md:gap-6">
         {stats.map((stat) => (
           <Link key={stat.title} href={stat.href}>
             <Card className="hover:border-accent/50 transition-colors cursor-pointer">
