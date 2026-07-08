@@ -1,0 +1,73 @@
+name: Staging bug
+description: Report a problem found on the staging site
+title: "[STAGING] "
+labels:
+  - staging
+  - bug
+body:
+  - type: input
+    id: page
+    attributes:
+      label: Page or URL
+      description: Where did the issue happen?
+      placeholder: http://148.230.101.181:3011/admin/bookings
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: What did you click or enter?
+      description: List the steps needed to reproduce the issue.
+      placeholder: |
+        1. Opened the booking form
+        2. Selected a date
+        3. Clicked submit
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect?
+      placeholder: The booking should submit and show a success message.
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: What happened instead?
+      placeholder: The page showed an error message or nothing happened.
+    validations:
+      required: true
+  - type: dropdown
+    id: severity
+    attributes:
+      label: Severity
+      options:
+        - Critical
+        - High
+        - Medium
+        - Low
+    validations:
+      required: true
+  - type: input
+    id: device
+    attributes:
+      label: Device and browser
+      placeholder: iPhone Safari, Windows Chrome, Mac Chrome
+    validations:
+      required: true
+  - type: dropdown
+    id: repeatable
+    attributes:
+      label: Can you repeat it?
+      options:
+        - "Yes"
+        - "No"
+        - "Not sure"
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Screenshot or video
+      description: Drag screenshots or videos here if available.
