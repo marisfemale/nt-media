@@ -2,6 +2,16 @@
 
 This file provides guidance to AI coding agents (Claude Code, Cursor, Copilot, Antigravity, etc.) when working with code in this repository.
 
+## Persistent Project Journal
+
+`PROJECT_JOURNAL.md` is the durable handoff record for this repository.
+
+- At the start of every project task, read the latest journal entry before making changes.
+- Before finishing every project task, add a dated entry describing the goal, meaningful work completed, files changed, decisions, verification performed and its outcome, and any open items or recommended next step.
+- Keep the newest entry at the top of the journal and preserve older entries.
+- Record verified facts separately from assumptions. Never put secrets, credentials, tokens, or sensitive customer data in the journal.
+- Update the journal even when a task only investigates or diagnoses an issue and makes no code changes.
+
 ## Repository Overview
 
 A collection of skills for Claude.ai and Claude Code for senior software engineers. Skills are packaged instructions and scripts that extend Claude and your coding agents capabilities.

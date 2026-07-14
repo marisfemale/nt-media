@@ -4,7 +4,11 @@ import React, { useEffect, useState } from "react"
 
 import { AlertCircle, CalendarDays, CheckCircle2, Clock, CreditCard, Timer } from "lucide-react"
 
-import { DepositPayment } from "@/components/deposit-payment"
+import {
+  DepositPayment,
+  type PaymentCompletionDetails,
+  type PaymentMethod,
+} from "@/components/deposit-payment"
 import { Button } from "@/components/ui/button"
 import { Calendar } from "@/components/ui/calendar"
 import { Input } from "@/components/ui/input"
@@ -64,7 +68,7 @@ export function BookingSection({
   const [isSuccess, setIsSuccess] = useState(false)
   const [bookingError, setBookingError] = useState("")
   const [bookingReference, setBookingReference] = useState("")
-  const [paymentMethod, setPaymentMethod] = useState<"card" | "bank" | null>(null)
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod | null>(null)
   const [formData, setFormData] = useState({
     name: "",
     email: "",
@@ -141,7 +145,10 @@ export function BookingSection({
     setStep(3)
   }
 
-  const handlePaymentComplete = async (method: "card" | "bank") => {
+  const handlePaymentComplete = async (
+    method: PaymentMethod,
+    details?: PaymentCompletionDetails
+  ) => {
     if (!selectedDate || !selectedStartTime || !selectedSession) return
 
     setPaymentMethod(method)
@@ -166,8 +173,10 @@ export function BookingSection({
           booking_time: `Start ${formatTimeLabel(selectedStartTime)} - ${selectedSession.label} (${selectedSession.duration})`,
           project_description: formData.projectDescription || null,
           budget_range: formatPrice(selectedSession.fullPriceInCents),
+          session_id: selectedDuration,
+          payment_intent_id: details?.paymentIntentId || null,
           payment_method: method,
-          status: method === "card" ? "confirmed" : "pending_payment",
+          status: method === "bank" ? "pending_payment" : "confirmed",
         }),
       })
     } catch {
@@ -205,6 +214,14 @@ export function BookingSection({
     })
   }
 
+  const isCardPayment = paymentMethod === "card" || paymentMethod === "card_details"
+  const paymentMethodLabel =
+    paymentMethod === "card_details"
+      ? "Card details"
+      : paymentMethod === "card"
+        ? "Apple Pay"
+        : "Bank transfer / PayID"
+
   if (isSuccess) {
     return (
       <section id="booking" className="bg-background py-24 md:py-32">
@@ -214,11 +231,11 @@ export function BookingSection({
               <CheckCircle2 className="h-10 w-10 text-accent" />
             </div>
             <h2 className="mb-4 font-serif text-3xl font-bold text-foreground md:text-4xl">
-              {paymentMethod === "card" ? "Booking Confirmed!" : "Booking Request Received!"}
+              {isCardPayment ? "Booking Confirmed!" : "Booking Request Received!"}
             </h2>
             <p className="mb-4 text-lg text-muted-foreground">
               Thank you, {formData.name}!{" "}
-              {paymentMethod === "card"
+              {isCardPayment
                 ? "Your booking has been confirmed."
                 : "Your booking will be confirmed once we receive your payment."}
             </p>
@@ -259,7 +276,7 @@ export function BookingSection({
                   </div>
                   <div className="flex justify-between font-semibold text-accent">
                     <span>
-                      {paymentMethod === "card" ? "Deposit Paid (50%)" : "Deposit Due (50%)"}
+                      {isCardPayment ? "Deposit Paid (50%)" : "Deposit Due (50%)"}
                     </span>
                     <span>
                       {selectedSession ? formatPrice(selectedSession.depositPriceInCents) : ""}
@@ -278,14 +295,14 @@ export function BookingSection({
                   </div>
                   <div className="flex justify-between text-muted-foreground">
                     <span>Payment Method</span>
-                    <span>{paymentMethod === "card" ? "Card" : "Bank transfer / PayID"}</span>
+                    <span>{paymentMethodLabel}</span>
                   </div>
                 </div>
               </div>
             </div>
 
             <p className="mb-8 text-muted-foreground">
-              {paymentMethod === "card"
+              {isCardPayment
                 ? "A confirmation email has been sent to "
                 : "Your booking request has been saved. Once your payment is received, we will send a confirmation email to "}
               <span className="text-accent">{formData.email}</span>

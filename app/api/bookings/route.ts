@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server"
 import { z } from "zod"
 
+import { verifyCardDetailsPayment } from "@/app/actions/stripe"
 import { notifyAdminOfBooking } from "@/lib/booking-email"
 import { prisma } from "@/lib/db"
 
@@ -18,7 +19,9 @@ const bookingSchema = z.object({
   duration_minutes: z.number().int().positive().max(24 * 60).nullable().optional(),
   project_description: z.string().trim().max(2000).nullable().optional(),
   budget_range: z.string().trim().max(100).nullable().optional(),
-  payment_method: z.enum(["card", "bank"]).nullable().optional(),
+  session_id: z.string().trim().max(80).nullable().optional(),
+  payment_intent_id: z.string().trim().max(120).nullable().optional(),
+  payment_method: z.enum(["card", "card_details", "bank"]).nullable().optional(),
   status: z.enum(["pending", "pending_payment", "confirmed"]).default("pending"),
 })
 
@@ -40,14 +43,37 @@ export async function POST(request: NextRequest) {
     )
   }
 
-  const booking = result.data
+  const { payment_intent_id: paymentIntentId, session_id: sessionId, ...booking } = result.data
   const bookingDate = new Date(booking.booking_date)
 
   try {
+    if (booking.payment_method === "card_details") {
+      if (!paymentIntentId || !sessionId || !booking.booking_reference) {
+        return NextResponse.json(
+          { error: "Card details payment could not be verified" },
+          { status: 400 }
+        )
+      }
+
+      const verification = await verifyCardDetailsPayment(
+        paymentIntentId,
+        booking.booking_reference,
+        sessionId
+      )
+
+      if (!verification.success) {
+        return NextResponse.json(
+          { error: "Card details payment could not be verified" },
+          { status: 402 }
+        )
+      }
+    }
+
     const created = await prisma.booking.create({
       data: {
         ...booking,
         booking_date: bookingDate,
+        status: booking.payment_method === "card_details" ? "confirmed" : booking.status,
       },
     })
 

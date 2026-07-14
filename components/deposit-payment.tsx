@@ -1,14 +1,22 @@
 "use client"
 
-import { useCallback, useState } from "react"
+import { useCallback, useState, type FormEvent } from "react"
 import {
+  CardElement,
+  Elements,
   EmbeddedCheckout,
   EmbeddedCheckoutProvider,
+  useElements,
+  useStripe,
 } from "@stripe/react-stripe-js"
 import { loadStripe } from "@stripe/stripe-js"
 import { CreditCard, Building2, Copy, CheckCircle2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { startDepositCheckoutSession } from "@/app/actions/stripe"
+import {
+  startCardDetailsPaymentIntent,
+  startDepositCheckoutSession,
+  verifyCardDetailsPayment,
+} from "@/app/actions/stripe"
 import { formatPrice } from "@/lib/products"
 
 const stripePromise = loadStripe(
@@ -22,11 +30,15 @@ interface DepositPaymentProps {
   customerName: string
   depositAmount: number
   fullAmount: number
-  onPaymentComplete: (method: PaymentMethod) => void
+  onPaymentComplete: (method: PaymentMethod, details?: PaymentCompletionDetails) => void
   onBack: () => void
 }
 
-type PaymentMethod = "card" | "bank"
+export type PaymentMethod = "card" | "card_details" | "bank"
+
+export interface PaymentCompletionDetails {
+  paymentIntentId?: string
+}
 
 // NT Media bank details for BPAY/PayID
 const BANK_DETAILS = {
@@ -35,6 +47,150 @@ const BANK_DETAILS = {
   accountNumber: "1234 5678",
   payId: "payments@ntmedia.com.au",
   bpayBillerCode: "12345",
+}
+
+const CARD_ELEMENT_OPTIONS = {
+  style: {
+    base: {
+      color: "#f8fafc",
+      fontFamily: "inherit",
+      fontSize: "16px",
+      "::placeholder": {
+        color: "#94a3b8",
+      },
+    },
+    invalid: {
+      color: "#ef4444",
+    },
+  },
+}
+
+interface CardDetailsPaymentFormProps {
+  clientSecret: string
+  sessionId: string
+  bookingReference: string
+  customerEmail: string
+  customerName: string
+  depositAmount: number
+  onPaymentComplete: (method: PaymentMethod, details?: PaymentCompletionDetails) => void
+}
+
+function CardDetailsPaymentForm({
+  clientSecret,
+  sessionId,
+  bookingReference,
+  customerEmail,
+  customerName,
+  depositAmount,
+  onPaymentComplete,
+}: CardDetailsPaymentFormProps) {
+  const stripe = useStripe()
+  const elements = useElements()
+  const [isCardComplete, setIsCardComplete] = useState(false)
+  const [isProcessing, setIsProcessing] = useState(false)
+  const [cardError, setCardError] = useState("")
+
+  const handleSubmit = async (event: FormEvent) => {
+    event.preventDefault()
+    setCardError("")
+
+    if (!stripe || !elements) {
+      setCardError("Card payment is still loading. Please try again in a moment.")
+      return
+    }
+
+    const card = elements.getElement(CardElement)
+    if (!card) {
+      setCardError("Card details could not be loaded. Please refresh and try again.")
+      return
+    }
+
+    setIsProcessing(true)
+
+    const { error, paymentIntent } = await stripe.confirmCardPayment(clientSecret, {
+      payment_method: {
+        card,
+        billing_details: {
+          name: customerName,
+          email: customerEmail,
+        },
+      },
+    })
+
+    if (error) {
+      setCardError(error.message || "Your card could not be charged. Please try another card.")
+      setIsProcessing(false)
+      return
+    }
+
+    if (!paymentIntent) {
+      setCardError("Stripe did not return a payment result. Please try again.")
+      setIsProcessing(false)
+      return
+    }
+
+    const verification = await verifyCardDetailsPayment(
+      paymentIntent.id,
+      bookingReference,
+      sessionId
+    )
+
+    if (!verification.success) {
+      setCardError(
+        verification.status === "succeeded"
+          ? "Payment was received but could not be matched to this booking. Please contact us with your booking reference."
+          : `Payment status is ${verification.status}. Please try again or choose another payment method.`
+      )
+      setIsProcessing(false)
+      return
+    }
+
+    onPaymentComplete("card_details", { paymentIntentId: paymentIntent.id })
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="space-y-5">
+      <div className="space-y-2">
+        <div className="flex items-center justify-between gap-4">
+          <p className="text-sm font-medium text-foreground">Card details</p>
+          <p className="text-sm font-semibold text-accent">
+            {formatPrice(depositAmount)}
+          </p>
+        </div>
+        <div className="rounded-lg border border-border bg-background p-4">
+          <CardElement
+            options={CARD_ELEMENT_OPTIONS}
+            onChange={(event) => {
+              setIsCardComplete(event.complete)
+              setCardError(event.error?.message || "")
+            }}
+          />
+        </div>
+        <p className="text-xs leading-5 text-muted-foreground">
+          Your card details are handled securely by Stripe and are not stored by NT Media.
+        </p>
+      </div>
+
+      {cardError && (
+        <div
+          role="alert"
+          className="rounded-lg border border-destructive/30 bg-destructive/10 p-4 text-sm text-foreground"
+        >
+          {cardError}
+        </div>
+      )}
+
+      <Button
+        type="submit"
+        disabled={!stripe || !elements || !isCardComplete || isProcessing}
+        className="w-full bg-accent px-8 py-6 text-base text-accent-foreground hover:bg-accent/90"
+      >
+        {isProcessing
+          ? "Processing card..."
+          : `Pay ${formatPrice(depositAmount)} Deposit`}
+      </Button>
+    </form>
+  )
 }
 
 export function DepositPayment({
@@ -50,6 +206,9 @@ export function DepositPayment({
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod | null>(null)
   const [copied, setCopied] = useState<string | null>(null)
   const [bankPaymentConfirmed, setBankPaymentConfirmed] = useState(false)
+  const [cardDetailsClientSecret, setCardDetailsClientSecret] = useState("")
+  const [isStartingCardDetailsPayment, setIsStartingCardDetailsPayment] = useState(false)
+  const [cardDetailsStartError, setCardDetailsStartError] = useState("")
 
   const startCheckoutSessionForDeposit = useCallback(
     () =>
@@ -71,6 +230,32 @@ export function DepositPayment({
   const handleBankPaymentConfirmation = () => {
     setBankPaymentConfirmed(true)
     onPaymentComplete("bank")
+  }
+
+  const handleCardDetailsSelect = async () => {
+    setCardDetailsStartError("")
+    setPaymentMethod("card_details")
+
+    if (cardDetailsClientSecret) return
+
+    setIsStartingCardDetailsPayment(true)
+
+    try {
+      const { clientSecret } = await startCardDetailsPaymentIntent(
+        sessionId,
+        bookingReference,
+        customerEmail,
+        customerName
+      )
+      setCardDetailsClientSecret(clientSecret)
+    } catch {
+      setPaymentMethod(null)
+      setCardDetailsStartError(
+        "We could not start card details payment. Please try again or choose another payment method."
+      )
+    } finally {
+      setIsStartingCardDetailsPayment(false)
+    }
   }
 
   return (
@@ -125,7 +310,7 @@ export function DepositPayment({
           <h3 className="text-lg font-semibold text-foreground text-center mb-6">
             Choose Payment Method
           </h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             {/* Card / Apple Pay */}
             <button
               type="button"
@@ -138,7 +323,7 @@ export function DepositPayment({
                 </div>
                 <div>
                   <h4 className="font-semibold text-foreground">
-                    Card / Apple Pay
+                    Apple Pay
                   </h4>
                   <p className="text-sm text-muted-foreground">
                     Instant confirmation
@@ -167,6 +352,40 @@ export function DepositPayment({
                 />
                 <span className="text-xs text-muted-foreground ml-2">
                   + Apple Pay
+                </span>
+              </div>
+            </button>
+
+            {/* Card Details */}
+            <button
+              type="button"
+              onClick={handleCardDetailsSelect}
+              disabled={isStartingCardDetailsPayment}
+              className="group p-6 border border-border rounded-xl bg-card hover:border-accent/50 transition-all text-left disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <div className="flex items-center gap-4 mb-4">
+                <div className="p-3 rounded-lg bg-background group-hover:bg-accent/10 transition-colors">
+                  <CreditCard className="w-6 h-6 text-accent" />
+                </div>
+                <div>
+                  <h4 className="font-semibold text-foreground">
+                    Pay by card (secure form)
+                  </h4>
+                </div>
+              </div>
+              <p className="text-sm text-muted-foreground">
+                Type your card number, expiry, and CVC directly in this booking
+                form. Your deposit is charged before confirmation.
+              </p>
+              <div className="flex items-center gap-3 mt-4">
+                <span className="text-xs bg-background px-2 py-1 rounded text-muted-foreground">
+                  Visa
+                </span>
+                <span className="text-xs bg-background px-2 py-1 rounded text-muted-foreground">
+                  Mastercard
+                </span>
+                <span className="text-xs bg-background px-2 py-1 rounded text-muted-foreground">
+                  Amex
                 </span>
               </div>
             </button>
@@ -208,6 +427,15 @@ export function DepositPayment({
             </button>
           </div>
 
+          {cardDetailsStartError && (
+            <div
+              role="alert"
+              className="rounded-lg border border-destructive/30 bg-destructive/10 p-4 text-sm text-foreground"
+            >
+              {cardDetailsStartError}
+            </div>
+          )}
+
           <div className="flex justify-center mt-6">
             <Button
               onClick={onBack}
@@ -225,7 +453,7 @@ export function DepositPayment({
         <div className="space-y-6">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-lg font-semibold text-foreground">
-              Pay with Card / Apple Pay
+              Pay with Apple Pay
             </h3>
             <button
               type="button"
@@ -245,6 +473,43 @@ export function DepositPayment({
             >
               <EmbeddedCheckout />
             </EmbeddedCheckoutProvider>
+          </div>
+        </div>
+      )}
+
+      {/* Card Details - Stripe CardElement */}
+      {paymentMethod === "card_details" && (
+        <div className="space-y-6">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-semibold text-foreground">
+              Enter Card Details
+            </h3>
+            <button
+              type="button"
+              onClick={() => setPaymentMethod(null)}
+              className="text-sm text-accent hover:underline"
+            >
+              Change payment method
+            </button>
+          </div>
+          <div className="bg-card border border-border rounded-xl p-6">
+            {isStartingCardDetailsPayment || !cardDetailsClientSecret ? (
+              <div role="status" className="text-sm text-muted-foreground">
+                Loading secure card form...
+              </div>
+            ) : (
+              <Elements stripe={stripePromise}>
+                <CardDetailsPaymentForm
+                  clientSecret={cardDetailsClientSecret}
+                  sessionId={sessionId}
+                  bookingReference={bookingReference}
+                  customerEmail={customerEmail}
+                  customerName={customerName}
+                  depositAmount={depositAmount}
+                  onPaymentComplete={onPaymentComplete}
+                />
+              </Elements>
+            )}
           </div>
         </div>
       )}

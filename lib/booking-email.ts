@@ -26,6 +26,8 @@ function formatBookingDate(date: Date) {
 }
 
 function bookingEmailText(booking: BookingEmailDetails) {
+  const paymentMethod = booking.payment_method?.replace(/_/g, " ")
+
   return [
     "New booking received",
     "",
@@ -37,7 +39,7 @@ function bookingEmailText(booking: BookingEmailDetails) {
     `Date: ${formatBookingDate(booking.booking_date)}`,
     `Time: ${booking.booking_time}`,
     booking.budget_range ? `Estimate: ${booking.budget_range}` : "",
-    booking.payment_method ? `Payment: ${booking.payment_method}` : "",
+    paymentMethod ? `Payment: ${paymentMethod}` : "",
     `Status: ${booking.status.replace(/_/g, " ")}`,
     "",
     booking.project_description ? `Project:\n${booking.project_description}` : "",
