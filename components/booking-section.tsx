@@ -148,17 +148,15 @@ export function BookingSection({
   const handlePaymentComplete = async (
     method: PaymentMethod,
     details?: PaymentCompletionDetails
-  ) => {
-    if (!selectedDate || !selectedStartTime || !selectedSession) return
+  ): Promise<boolean> => {
+    if (!selectedDate || !selectedStartTime || !selectedSession) return false
 
     setPaymentMethod(method)
     setBookingError("")
     setIsSubmitting(true)
 
-    let response: Response
-
     try {
-      response = await fetch("/api/bookings", {
+      const response = await fetch("/api/bookings", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -179,20 +177,27 @@ export function BookingSection({
           status: method === "bank" ? "pending_payment" : "confirmed",
         }),
       })
+      if (!response.ok) {
+        setBookingError(
+          method === "bank"
+            ? "We could not save your booking request. Please try again."
+            : "Your payment completed, but we could not save the booking. Please contact us with your booking reference and do not pay again."
+        )
+        return false
+      }
+
+      setIsSuccess(true)
+      return true
     } catch {
+      setBookingError(
+        method === "bank"
+          ? "We could not save your booking request. Please try again."
+          : "We could not confirm that your paid booking was saved. Please contact us with your booking reference before trying again."
+      )
+      return false
+    } finally {
       setIsSubmitting(false)
-      setBookingError("We could not save your booking request. Please try again.")
-      return
     }
-
-    setIsSubmitting(false)
-
-    if (!response.ok) {
-      setBookingError("We could not save your booking request. Please try again.")
-      return
-    }
-
-    setIsSuccess(true)
   }
 
   const resetBookingForm = () => {

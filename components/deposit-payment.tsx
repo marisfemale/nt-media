@@ -30,7 +30,7 @@ interface DepositPaymentProps {
   customerName: string
   depositAmount: number
   fullAmount: number
-  onPaymentComplete: (method: PaymentMethod, details?: PaymentCompletionDetails) => void
+  onPaymentComplete: (method: PaymentMethod, details?: PaymentCompletionDetails) => Promise<boolean>
   onBack: () => void
 }
 
@@ -72,7 +72,7 @@ interface CardDetailsPaymentFormProps {
   customerEmail: string
   customerName: string
   depositAmount: number
-  onPaymentComplete: (method: PaymentMethod, details?: PaymentCompletionDetails) => void
+  onPaymentComplete: (method: PaymentMethod, details?: PaymentCompletionDetails) => Promise<boolean>
 }
 
 function CardDetailsPaymentForm({
@@ -107,45 +107,58 @@ function CardDetailsPaymentForm({
 
     setIsProcessing(true)
 
-    const { error, paymentIntent } = await stripe.confirmCardPayment(clientSecret, {
-      payment_method: {
-        card,
-        billing_details: {
-          name: customerName,
-          email: customerEmail,
+    try {
+      const { error, paymentIntent } = await stripe.confirmCardPayment(clientSecret, {
+        payment_method: {
+          card,
+          billing_details: {
+            name: customerName,
+            email: customerEmail,
+          },
         },
-      },
-    })
+      })
 
-    if (error) {
-      setCardError(error.message || "Your card could not be charged. Please try another card.")
-      setIsProcessing(false)
-      return
-    }
+      if (error) {
+        setCardError(error.message || "Your card could not be charged. Please try another card.")
+        return
+      }
 
-    if (!paymentIntent) {
-      setCardError("Stripe did not return a payment result. Please try again.")
-      setIsProcessing(false)
-      return
-    }
+      if (!paymentIntent) {
+        setCardError("Stripe did not return a payment result. Please try again.")
+        return
+      }
 
-    const verification = await verifyCardDetailsPayment(
-      paymentIntent.id,
-      bookingReference,
-      sessionId
-    )
-
-    if (!verification.success) {
-      setCardError(
-        verification.status === "succeeded"
-          ? "Payment was received but could not be matched to this booking. Please contact us with your booking reference."
-          : `Payment status is ${verification.status}. Please try again or choose another payment method.`
+      const verification = await verifyCardDetailsPayment(
+        paymentIntent.id,
+        bookingReference,
+        sessionId
       )
-      setIsProcessing(false)
-      return
-    }
 
-    onPaymentComplete("card_details", { paymentIntentId: paymentIntent.id })
+      if (!verification.success) {
+        setCardError(
+          verification.status === "succeeded"
+            ? "Payment was received but could not be matched to this booking. Please contact us with your booking reference and do not pay again."
+            : `Payment status is ${verification.status}. Please try again or choose another payment method.`
+        )
+        return
+      }
+
+      const bookingSaved = await onPaymentComplete("card_details", {
+        paymentIntentId: paymentIntent.id,
+      })
+
+      if (!bookingSaved) {
+        setCardError(
+          "Your payment was received, but we could not save the booking. Please contact us with your booking reference and do not pay again."
+        )
+      }
+    } catch {
+      setCardError(
+        "We could not confirm the payment result. Please contact us with your booking reference before trying again."
+      )
+    } finally {
+      setIsProcessing(false)
+    }
   }
 
   return (
@@ -227,9 +240,9 @@ export function DepositPayment({
     setTimeout(() => setCopied(null), 2000)
   }
 
-  const handleBankPaymentConfirmation = () => {
-    setBankPaymentConfirmed(true)
-    onPaymentComplete("bank")
+  const handleBankPaymentConfirmation = async () => {
+    const bookingSaved = await onPaymentComplete("bank")
+    setBankPaymentConfirmed(bookingSaved)
   }
 
   const handleCardDetailsSelect = async () => {
@@ -468,7 +481,9 @@ export function DepositPayment({
               stripe={stripePromise}
               options={{
                 fetchClientSecret: startCheckoutSessionForDeposit,
-                onComplete: () => onPaymentComplete("card"),
+                onComplete: async () => {
+                  await onPaymentComplete("card")
+                },
               }}
             >
               <EmbeddedCheckout />
