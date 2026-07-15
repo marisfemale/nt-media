@@ -15,6 +15,50 @@ Each entry should record:
 
 ---
 
+## 2026-07-15 — Replace README with onboarding and operations guide
+
+### Goal and completed work
+
+- Replaced the one-line root README with a newcomer-oriented guide to the application, technology, prerequisites, environment setup, Docker/PostgreSQL, Prisma, local development, admin access, Stripe testing, common commands, content updates, code workflow, staging, production safeguards, project structure, and troubleshooting.
+- Documented Node.js 20.9+ from the installed Next.js package's declared engine requirement.
+- Clearly separated GitHub pushes from the current manual VPS staging deployment and marked the unknown SSH user, application directory, service manager, backup procedure, and environment location as required operational inputs rather than guessed commands.
+- Documented that production gallery uploads require Vercel Blob, email delivery requires Resend, staging uses Stripe test keys, and secrets must never be committed.
+- Linked the existing tester resource, staging guide, test cases, QA checklist, and GitHub bug template.
+
+### Files changed
+
+- `README.md`
+- `PROJECT_JOURNAL.md`
+
+### Verification
+
+- Confirmed all five local Markdown links in the README resolve to existing repository files.
+- Confirmed every documented npm script exists in `package.json`.
+- `git diff --check` passed apart from expected LF-to-CRLF working-copy warnings.
+- No application checks were rerun because this task changed documentation only; the preceding release entry records passing TypeScript, targeted lint, and production build checks.
+
+### Open item
+
+- When staging access is identified, replace deployment placeholders with the verified SSH username policy, VPS application path, service/process name, restart command, backup procedure, and secret-management location without recording credentials.
+
+## 2026-07-15 — Investigate staging deployment path
+
+### Goal and verified facts
+
+- Determined how the updated `main` branch can reach the testing environment at `http://148.230.101.181:3011`.
+- The repository has no GitHub Actions workflows, deployment script/configuration, or staging branch; only `main` exists.
+- GitHub has no Actions runs, repository secrets, or repository variables configured for deployment.
+- The staging URL is reachable with HTTP 200 and identifies itself as Next.js.
+- This computer has an SSH key but no SSH config entry or known-host record for the staging IP, so the server username, application directory, and service manager cannot be safely inferred.
+
+### Files changed
+
+- `PROJECT_JOURNAL.md` only (deployment investigation record).
+
+### Required next step
+
+- Obtain the VPS SSH username, application directory, and restart mechanism (for example PM2, Docker Compose, or systemd). Also ensure Stripe test keys are configured on staging rather than copied through Git. With those details, update via a fast-forward pull, install/build/schema steps appropriate to the server, restart the service, and perform a health check.
+
 ## 2026-07-15 — Issue #3 closure verified
 
 ### Verified outcome
