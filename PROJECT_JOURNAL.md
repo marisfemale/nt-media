@@ -15,6 +15,23 @@ Each entry should record:
 
 ---
 
+## 2026-07-15 — Issue #3 closure verified
+
+### Verified outcome
+
+- Committed the verified card-payment release as `164b280` (`Harden secure card payment flow`) with `Fixes #3`.
+- Pushed `main` to `origin/main` successfully.
+- GitHub issue #3, `Need add card payment detail`, is confirmed closed.
+- The worktree was clean and local `main` matched `origin/main` immediately after the release push.
+
+### Remaining next step
+
+- Deploy the updated `main` branch and have the tester run `Test resource.md` against staging; restart local development with `npm run dev` if needed.
+
+### Files changed
+
+- `PROJECT_JOURNAL.md` only (verified release outcome).
+
 ## 2026-07-15 — Ship card-payment issue #3
 
 ### Goal and completed work
