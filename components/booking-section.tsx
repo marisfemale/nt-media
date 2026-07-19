@@ -66,6 +66,7 @@ export function BookingSection({
   const [step, setStep] = useState(1)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isSuccess, setIsSuccess] = useState(false)
+  const [customerEmailAccepted, setCustomerEmailAccepted] = useState(false)
   const [bookingError, setBookingError] = useState("")
   const [bookingReference, setBookingReference] = useState("")
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod | null>(null)
@@ -186,6 +187,10 @@ export function BookingSection({
         return false
       }
 
+      const responseBody = (await response.json()) as {
+        customer_email_accepted?: boolean
+      }
+      setCustomerEmailAccepted(responseBody.customer_email_accepted === true)
       setIsSuccess(true)
       return true
     } catch {
@@ -209,6 +214,7 @@ export function BookingSection({
     setSelectedStartTime("")
     setBookingReference("")
     setPaymentMethod(null)
+    setCustomerEmailAccepted(false)
     setBookingError("")
     setFormData({
       name: "",
@@ -306,13 +312,23 @@ export function BookingSection({
               </div>
             </div>
 
-            <p className="mb-8 text-muted-foreground">
-              {isCardPayment
-                ? "A confirmation email has been sent to "
-                : "Your booking request has been saved. Once your payment is received, we will send a confirmation email to "}
-              <span className="text-accent">{formData.email}</span>
-              {paymentMethod === "bank" && " within 1-2 business days."}
-            </p>
+            {customerEmailAccepted ? (
+              <p className="mb-8 text-muted-foreground">
+                {isCardPayment
+                  ? "A confirmation email has been accepted for delivery to "
+                  : "A booking request email has been accepted for delivery to "}
+                <span className="text-accent">{formData.email}</span>.
+              </p>
+            ) : (
+              <div
+                role="status"
+                className="mb-8 rounded-lg border border-accent/30 bg-accent/10 p-4 text-sm text-foreground"
+              >
+                Your booking was saved, but we could not send the email confirmation.
+                Please keep the booking reference shown above and contact NT Media if you
+                need assistance.
+              </div>
+            )}
             <Button
               onClick={resetBookingForm}
               variant="outline"

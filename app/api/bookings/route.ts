@@ -2,7 +2,7 @@ import { NextResponse, type NextRequest } from "next/server"
 import { z } from "zod"
 
 import { verifyCardDetailsPayment } from "@/app/actions/stripe"
-import { notifyAdminOfBooking } from "@/lib/booking-email"
+import { notifyBookingParties } from "@/lib/booking-email"
 import { prisma } from "@/lib/db"
 
 const bookingSchema = z.object({
@@ -27,6 +27,7 @@ const bookingSchema = z.object({
 
 export async function POST(request: NextRequest) {
   let body: unknown
+  let customerEmailAccepted = false
 
   try {
     body = await request.json()
@@ -77,10 +78,14 @@ export async function POST(request: NextRequest) {
       },
     })
 
-    await notifyAdminOfBooking(created)
+    const notifications = await notifyBookingParties(created)
+    customerEmailAccepted = notifications.customerAccepted
   } catch {
     return NextResponse.json({ error: "Could not save booking" }, { status: 500 })
   }
 
-  return NextResponse.json({ success: true }, { status: 201 })
+  return NextResponse.json(
+    { success: true, customer_email_accepted: customerEmailAccepted },
+    { status: 201 }
+  )
 }

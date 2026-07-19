@@ -15,6 +15,177 @@ Each entry should record:
 
 ---
 
+## 2026-07-15 — Confirm local email warning cause
+
+### Verified cause
+
+- The booking-success warning is behaving as designed: the booking saved, but the customer email was not accepted for delivery.
+- Local `.env.local` contains a `RESEND_API_KEY` entry, but it is still the documented placeholder rather than a usable `re_...` key.
+- Local `BOOKING_EMAIL_FROM` is also still the `example.com` placeholder rather than an address on a Resend-verified domain.
+- The local development server is running, so it must be restarted after real Resend configuration is added.
+- No environment values were printed, copied, or recorded.
+
+### Files changed
+
+- `PROJECT_JOURNAL.md` only (diagnostic record).
+
+### Required next step
+
+- Configure a real Resend API key and verified sender locally and independently on staging, restart each application, then test and check the Resend delivery log. The previously exposed Stripe test secret still requires rotation.
+
+## 2026-07-15 — Add customer booking confirmation email
+
+### Goal and verified cause
+
+- Investigated a successful booking that did not send a customer confirmation.
+- The application previously called `notifyAdminOfBooking`, which sent only to the configured admin address; no customer email was implemented.
+- Staging had previously been verified to contain only `DATABASE_URL`, so Resend configuration must also be added there before any application email can be accepted for delivery.
+- A Stripe test secret was exposed in conversation context. Its value was not copied into code, tools, logs, or this journal; it must be rotated immediately and replaced in every environment where it was used.
+
+### Completed
+
+- Replaced the admin-only email function with `notifyBookingParties`, which independently sends an admin notification and a customer email through Resend.
+- Customer card bookings receive a confirmed/deposit-received message; bank-transfer bookings receive a pending booking-request message.
+- Email-provider failures remain non-blocking and cannot undo a saved booking.
+- The booking API now reports whether the customer email was accepted by Resend.
+- The success UI no longer falsely guarantees an email was sent: it shows accepted-for-delivery wording or a warning to retain the booking reference.
+- Extended `Test resource.md` with customer/admin email and failure-copy checks.
+
+### Files changed
+
+- `lib/booking-email.ts`
+- `app/api/bookings/route.ts`
+- `components/booking-section.tsx`
+- `Test resource.md`
+- `PROJECT_JOURNAL.md`
+
+### Verification
+
+- `npx tsc --noEmit --incremental false` passed.
+- Targeted ESLint passed for all changed implementation files.
+- `npm run build` passed using temporary placeholder Stripe values; the exposed key was not used for verification.
+
+### Required next steps
+
+- Rotate the exposed Stripe test secret in Stripe, then update local and staging configuration without sharing values.
+- Configure staging `RESEND_API_KEY` and `BOOKING_EMAIL_FROM`. For real recipient delivery, the From domain must be verified in Resend; Resend's designated test addresses can validate provider events without delivering to a person's inbox.
+- Commit/push/deploy this change, restart only `nt-media-staging`, and test both successful card and pending bank email paths.
+
+## 2026-07-15 — Staging checkout clean; Stripe configuration missing
+
+### Verified facts
+
+- `/var/www/nt-media-staging` is the correct staging checkout, on clean branch `main`, currently at `ea83a07`.
+- Fetch updated staging's `origin/main` to `857fdcf`; six commits are ready to fast-forward, including the card-details flow, payment hardening, QA resources, calendar hydration fix, and README.
+- Staging is healthy before deployment with HTTP 200 on localhost port 3011.
+- Staging `.env.local` exists but defines only `DATABASE_URL`; the new Stripe code requires sandbox `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` and `STRIPE_SECRET_KEY` before build/restart.
+- The release from `ea83a07` to `857fdcf` changes neither `package.json`/`package-lock.json` nor `prisma/schema.prisma`, so no dependency-version or database-schema change is part of this deployment.
+
+### Decision
+
+- Configure Stripe test keys and a strong admin session secret in staging without printing values, change `.env.local` permissions to owner-only, then fast-forward/build/restart only PM2 `nt-media-staging`. Do not touch production `/root/nt-media` or PM2 `nt-media`.
+
+### Files changed
+
+- `PROJECT_JOURNAL.md` only (staging readiness record).
+
+## 2026-07-15 — Production and staging directories confirmed separate
+
+### Verified runtime layout
+
+- PM2 `nt-media` runs from `/root/nt-media` with `npm run start -p 3010`; this is the production checkout.
+- PM2 `nt-media-staging` runs from `/var/www/nt-media-staging` with `npm start -p 3011`; this is the staging/test checkout.
+- Staging remains healthy on port 3011.
+- The dirty tracked images, modified lockfile, and untracked `top all` file belong to `/root/nt-media` production and must not be changed during the staging deployment.
+- The production checkout is six commits behind fetched `origin/main`, whose current tip is `857fdcf`.
+- The inspected production `.env` and `.env.local` expose only the `DATABASE_URL` variable name; no values were displayed.
+
+### Decision
+
+- Leave `/root/nt-media` untouched. All further staging inspection and deployment work must occur only in `/var/www/nt-media-staging` and only restart the `nt-media-staging` PM2 process.
+
+### Files changed
+
+- `PROJECT_JOURNAL.md` only (verified VPS topology record).
+
+### Required next step
+
+- Inspect the staging checkout's Git status/current commit, remote, environment filenames and variable names, dependencies, and database configuration without revealing values. If clean and correctly isolated, back it up, fast-forward to `origin/main`, install/build/apply schema, and restart only `nt-media-staging`.
+
+## 2026-07-15 — VPS diagnostic interrupted by Git pager
+
+### Verified facts
+
+- VPS `git fetch origin` succeeded and updated its remote-tracking `main` from `ea83a07` to `857fdcf`.
+- Current GitHub/local `main` is `857fdcf` (`update readme`), which includes the onboarding README and preceding journal documentation.
+- `git diff --stat` entered the `less` pager at `(END)`; commands typed afterward were garbled pager input and did not reliably execute.
+- The output therefore does not yet confirm the PM2 working directories, command lines, or metadata for `top all`.
+
+### Decision and next step
+
+- No deployment action has been taken. Exit the pager with `q` and rerun the bounded diagnostics with `GIT_PAGER=cat`/`--no-pager` before backing up or updating the VPS checkout.
+
+### Files changed
+
+- `PROJECT_JOURNAL.md` only (diagnostic status record).
+
+## 2026-07-15 — Staging runtime and deployment blockers confirmed
+
+### Verified facts
+
+- The VPS staging application is `/root/nt-media`, on branch `main`, with remote `https://github.com/marisfemale/nt-media.git`.
+- The server checkout is currently at `ea83a07` (`change port from 5432 to 5433 to avoid conflict`), well behind the current GitHub `main` release.
+- PM2 processes `nt-media` and `nt-media-staging` are both online; staging listens on port 3011 and returns HTTP 200 locally.
+- Both `/root/nt-media/.env` and `/root/nt-media/.env.local` exist. Their contents were not exposed.
+- The server working tree is dirty: `package-lock.json`, many tracked public image/icon files, and an untracked file named `top all` differ from Git.
+
+### Deployment risk and decision
+
+- Do not pull, reset, clean, or rebuild yet. Existing server-side asset changes must be preserved and assessed.
+- Confirm whether the production and staging PM2 processes share `/root/nt-media` as their working directory. If they do, rebuilding `.next` in place can affect both environments and the deployment layout should be separated before treating staging as isolated.
+
+### Files changed
+
+- `PROJECT_JOURNAL.md` only (verified VPS state record).
+
+### Required next step
+
+- Inspect only the PM2 script paths/cwds, listener ownership, Git diff summary, and metadata for `top all`; then create a server-side backup before choosing a stash/merge or separate staging checkout strategy. Do not display environment values.
+
+## 2026-07-15 — Staging VPS application path identified
+
+### Verified facts
+
+- The staging VPS shell prompt identifies the host as `srv1028159` and the approved SSH user as `root`.
+- The NT Media application directory is `/root/nt-media`.
+- `/root/.pm2` exists, so PM2 is likely the application process manager; the exact PM2 application name still needs confirmation with `pm2 list`.
+- The public staging URL remains `http://148.230.101.181:3011`.
+- A root-level `/root/.env.local.save` exists, but its contents and relationship to the running application were not inspected. The application directory must be checked for its own hidden `.env.local` without displaying secret values.
+
+### Files changed
+
+- `PROJECT_JOURNAL.md` only (operations discovery record).
+
+### Required next step
+
+- From `/root/nt-media`, confirm Git state, the presence (not contents) of `.env.local`, the PM2 process name/cwd, the listener on port 3011, and the localhost health response. Do not print PM2 environment variables or environment-file contents.
+
+## 2026-07-15 — VPS application-directory discovery guidance
+
+### Goal and guidance
+
+- Documented safe Linux commands for identifying the NT Media application directory on the staging VPS.
+- Recommended inspecting the current directory and common application roots (`/var/www`, `/srv`, `/opt`, and `/home`) before using a bounded `find` for `.git`, `package.json`, or an `nt-media` directory.
+- Avoided recommending an unbounded recursive listing of `/`, which can be slow, noisy, and expose unrelated system paths.
+
+### Files changed
+
+- `PROJECT_JOURNAL.md` only (operations guidance record).
+
+### Next step
+
+- User connects through the approved SSH account, runs the bounded discovery commands, and shares only the resulting application path and service/process information—not passwords, keys, environment values, or file contents.
+
 ## 2026-07-15 — Replace README with onboarding and operations guide
 
 ### Goal and completed work

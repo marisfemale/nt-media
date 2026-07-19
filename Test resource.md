@@ -43,6 +43,10 @@ Also verify:
 - A 3D Secure payment returns to the booking flow after authentication.
 - Bank transfer saves a `pending payment` booking without charging a card.
 - If payment succeeds but the booking cannot be saved, the customer is told to contact NT Media and not pay again.
+- A successful card booking sends the customer a `Booking confirmed` email and sends the admin a `New booking` email.
+- A bank-transfer booking sends the customer a `Booking request received` email rather than claiming payment is confirmed.
+- If the email provider does not accept the customer email, the success page says the booking was saved but the email could not be sent; it must not falsely say the email was sent.
+- Check the Resend email log and the recipient's spam/junk folder when diagnosing delivery.
 
 ## Safety
 
